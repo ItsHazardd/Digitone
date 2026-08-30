@@ -3,15 +3,23 @@ namespace Digitone
     internal static class AppInfo
     {
         // Release.Batch.Day — update this single value after each completed batch.
-        internal const string Version = "2.1.29";
+        internal const string Version = "2.6.30";
         internal const string Changelog =
 @"VERSION 2 · CURRENT CHANGES
 
 LIBRARY AND PLAYLISTS
 • Restored the Add to playlist submenu in the song right-click menu for single and Ctrl/Shift selections.
+• New manual, downloaded, and folder playlists stay in the playlist grid until explicitly added to quick access.
+
+PLAYBACK AND SOUND
+• Removed experimental record scratching and restored the normal playback path; ordinary record rotation remains unchanged.
+• Made UI playback startup deterministic so the selected song reliably reaches the audio engine.
+• Added a persistent Audio Output selector with Windows-default fallback for disconnected devices.
 
 ACCESSIBILITY
-• Rebuilt the changelog as a version browser with retained release history.";
+• Rebuilt the changelog as a version browser with retained release history.
+• Added optional startup checks for stable releases from the official Digitone GitHub repository; downloads always require permission.
+• Fixed GitHub update checks on Windows systems that require explicit TLS 1.2.";
 
         internal const string Release1Changelog =
 @"VERSION 1 · RELEASE HISTORY

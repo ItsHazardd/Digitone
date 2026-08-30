@@ -71,9 +71,12 @@ namespace Digitone
         public bool EqualizerEnabled { get; set; }
         public double[] EqualizerGains { get; set; }
         public bool NeonEnabled { get; set; }
+        public bool AutoCheckUpdates { get; set; }
+        public string LastUpdateCheckUtc { get; set; }
+        public string AudioOutputId { get; set; }
         public string MainMusicFolder { get; set; }
         public List<string> MusicFolders { get; set; }
-        public Library() { Tracks = new List<Track>(); Playlists = new List<Playlist>(); Volume = 0.7; }
+        public Library() { Tracks = new List<Track>(); Playlists = new List<Playlist>(); Volume = 0.7; AutoCheckUpdates = true; }
     }
     public static class LocalFiles
     {
@@ -252,6 +255,7 @@ namespace Digitone
             SetupExpandedWaveform();
             SetupThemes();
             SetupSettings();
+            SetupUpdates();
             using(var markStream=Assembly.GetExecutingAssembly().GetManifestResourceStream("DigitoneMark.png")){var mark=new BitmapImage();mark.BeginInit();mark.CacheOption=BitmapCacheOption.OnLoad;mark.StreamSource=markStream;mark.EndInit();mark.Freeze();Find<Image>("RecordLogo").Source=mark;}
             SetupMotion();
             SetupMediaKeys();
@@ -325,7 +329,6 @@ namespace Digitone
             Window.DragOver += delegate(object sender, DragEventArgs e) { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
             Window.Drop += delegate(object sender, DragEventArgs e) { if (e.Data.GetDataPresent(DataFormats.FileDrop)) { var ignored = Import((string[])e.Data.GetData(DataFormats.FileDrop)); } };
             Window.PreviewKeyDown += delegate(object sender, KeyEventArgs e) { if (e.Key == Key.Space && !(Keyboard.FocusedElement is TextBox) && !(Keyboard.FocusedElement is Button) && !(Keyboard.FocusedElement is Slider)) { TogglePlay(); e.Handled = true; } };
-            media.MediaOpened += delegate { if (current == null || !opening) return; opening = false; ready = true; media.Volume = Data.Volume; Find<Slider>("Volume").Value = Data.Volume; UpdateTransport(); Find<Slider>("Seek").Maximum = Math.Max(1,media.Duration.TotalSeconds); Text("Duration", FormatTime(Find<Slider>("Seek").Maximum)); if (playing) media.Play(); else media.Pause(); Status("Playing from your device · " + current.Format); };
             media.MediaEnded += delegate { if (repeat == 2) { media.Position = TimeSpan.Zero; media.Play(); } else Next(true); };
             media.MediaFailed += delegate(Exception e) { opening = false; ready = false; playing = false; media.Close(); UpdatePlayButton(); Status("Cannot play this file. It may be missing, damaged, or unsupported by your Windows codecs. Try another track."); };
             Find<Canvas>("Waveform").SizeChanged += delegate { LayoutWave(); };
@@ -489,7 +492,7 @@ namespace Digitone
         }
         internal Playlist CreatePlaylist(string name, IEnumerable<Track> tracks)
         {
-            var playlist = new Playlist { Name = name.Trim(), Favorite = true, Paths = tracks.Select(t => t.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
+            var playlist = new Playlist { Name = name.Trim(), Favorite = false, Paths = tracks.Select(t => t.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
             Data.Playlists.Add(playlist); selectedPlaylist = playlist; favorites = false; RefreshPlaylists(); RefreshPlaylistGrid(); RefreshTracks(); Save(); return playlist;
         }
         private void MakeMix()
@@ -644,8 +647,18 @@ namespace Digitone
             updatingSeek = true; Find<Slider>("Seek").Value = 0; Find<Slider>("Seek").Maximum = 1; updatingSeek = false;
              ResetLiveWave(); Text("WaveLabel", "Preparing waveform…"); RefreshQueue(); UpdatePlayButton();
             if (!LocalFiles.IsLocal(current.Path) || !File.Exists(current.Path)) { Status("This local file is unavailable. Reconnect its drive or add it again from its new location."); return; }
-            try { opening = true; playing = true; string openingPath=current.Path; int openingVersion=waveVersion; UpdatePlayButton(); Status("Opening local audio…"); Window.Dispatcher.BeginInvoke(new Action(delegate{if(closed||openingVersion!=waveVersion)return;media.Open(new Uri(openingPath,UriKind.Absolute),Data.EqualizerEnabled,Data.EqualizerGains);})); var ignored = LoadWave(current.Path, waveVersion); }
+            try { opening = true; playing = true; string openingPath=current.Path; int openingVersion=waveVersion; UpdatePlayButton(); Status("Opening local audio…"); Window.Dispatcher.BeginInvoke(new Action(delegate{if(closed||openingVersion!=waveVersion)return;OpenCurrentAudio(openingPath,openingVersion,0,true);})); var ignored = LoadWave(current.Path, waveVersion); }
             catch (Exception e) { opening = false; playing = false; UpdatePlayButton(); Status("Unable to open this track: " + e.Message); }
+        }
+        private void OpenCurrentAudio(string path,int version,double position,bool resume)
+        {
+            if(closed||version!=waveVersion||current==null)return;
+            playing=resume;if(!media.Open(new Uri(path,UriKind.Absolute),Data.EqualizerEnabled,Data.EqualizerGains,Data.AudioOutputId))return;
+            if(closed||version!=waveVersion){media.Close();return;}opening=false;ready=true;media.Volume=Data.Volume;Find<Slider>("Volume").Value=Data.Volume;Find<Slider>("Seek").Maximum=Math.Max(1,media.Duration.TotalSeconds);Text("Duration",FormatTime(Find<Slider>("Seek").Maximum));if(position>0)media.Position=TimeSpan.FromSeconds(Math.Min(position,media.Duration.TotalSeconds));if(resume)media.Play();else media.Pause();UpdateTransport();UpdatePlayButton();Status("Playing from your selected output · "+current.Format);
+        }
+        internal void ChangeAudioOutput(string id)
+        {
+            Data.AudioOutputId=id??"";Save();if(current==null||(!ready&&!opening))return;double position=ready?media.Position.TotalSeconds:0;bool resume=playing;int version=waveVersion;string path=current.Path;opening=true;ready=false;media.Close();UpdatePlayButton();OpenCurrentAudio(path,version,position,resume);
         }
         private Task LoadWave(string path, int version)
         {
@@ -694,9 +707,8 @@ namespace Digitone
             if (wasCurrent && editor.ReleasedPlayback)
             {
                 PlayAt(queueIndex); int version = waveVersion;
-                if (!resume) { playing = false; media.Pause(); UpdatePlayButton(); }
                 for (int i = 0; i < 100 && !ready && version == waveVersion && !closed; i++) await Task.Delay(50);
-                if (ready && version == waveVersion && !closed) media.Position = TimeSpan.FromSeconds(position);
+                if (ready && version == waveVersion && !closed) {media.Position = TimeSpan.FromSeconds(position);if(!resume){playing=false;media.Pause();UpdatePlayButton();}}
             }
         }
         private void StopAndClear() { if (liveWave != null) liveWave.Dispose(); opening = false; media.Close(); ready = false; playing = false; current = null; queue.Clear(); queueIndex = -1; waveVersion++;  UpdateCover(); ResetLiveWave(); UpdatePlayButton(); RefreshQueue(); Text("NowTitle", "Find your quiet."); Text("NowDetail", "Choose something worth listening to."); Text("PlayerTitle", "Nothing playing. Yet."); Text("Elapsed", "0:00"); Text("Duration", "0:00"); updatingSeek = true; Find<Slider>("Seek").Value = 0; updatingSeek = false; }

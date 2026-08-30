@@ -5,9 +5,15 @@ using NAudio.CoreAudioApi;
 using NAudio.Dsp;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using System.Threading;
 
 namespace Digitone
 {
+    internal sealed class AudioOutputChoice
+    {
+        internal string Id,Name;
+        public override string ToString(){return Name;}
+    }
     internal sealed class EqualizerSampleProvider : ISampleProvider
     {
         private readonly ISampleProvider source;
@@ -36,9 +42,9 @@ namespace Digitone
         private WasapiOut output;
         private VolumeSampleProvider volume;
         private EqualizerSampleProvider equalizer;
+        private MMDevice selectedDevice;
         private bool suppressStop, muted;
         private double desiredVolume=.7;
-        internal event EventHandler MediaOpened;
         internal event EventHandler MediaEnded;
         internal event Action<Exception> MediaFailed;
         internal TimeSpan Position { get { return reader==null?TimeSpan.Zero:reader.CurrentTime; } set { if(reader!=null)reader.CurrentTime=value<TimeSpan.Zero?TimeSpan.Zero:value>reader.TotalTime?reader.TotalTime:value; } }
@@ -47,21 +53,38 @@ namespace Digitone
         internal bool IsMuted { get { return muted; } set { muted=value; ApplyVolume(); } }
         private void ApplyVolume(){if(volume!=null)volume.Volume=muted?0:(float)desiredVolume;}
         internal void ConfigureEqualizer(bool enabled,double[] gains){if(equalizer!=null){equalizer.SetGains(gains); equalizer.Enabled=enabled;}}
-        internal void Open(Uri uri,bool eqEnabled,double[] gains)
+        internal static AudioOutputChoice[] Outputs()
+        {
+            try
+            {
+                using(var devices=new MMDeviceEnumerator())
+                {
+                    using(var preferred=devices.GetDefaultAudioEndpoint(DataFlow.Render,Role.Multimedia))
+                    {
+                        var choices=new System.Collections.Generic.List<AudioOutputChoice>{new AudioOutputChoice{Id="",Name="Windows default · "+preferred.FriendlyName}};
+                        foreach(var device in devices.EnumerateAudioEndPoints(DataFlow.Render,DeviceState.Active))if(device.ID!=preferred.ID)choices.Add(new AudioOutputChoice{Id=device.ID,Name=device.FriendlyName});
+                        return choices.ToArray();
+                    }
+                }
+            }
+            catch{return new[]{new AudioOutputChoice{Id="",Name="Windows default output"}};}
+        }
+        internal bool Open(Uri uri,bool eqEnabled,double[] gains,string outputDeviceId=null)
         {
             Close();
             try
             {
                 reader=new MediaFoundationReader(uri.LocalPath); equalizer=new EqualizerSampleProvider(reader.ToSampleProvider()); equalizer.SetGains(gains); equalizer.Enabled=eqEnabled;
-                volume=new VolumeSampleProvider(equalizer); ApplyVolume(); output=new WasapiOut(AudioClientShareMode.Shared,true,50); output.Init(new SampleToWaveProvider(volume)); output.PlaybackStopped+=Stopped;
-                var opened=MediaOpened; if(opened!=null)opened(this,EventArgs.Empty);
+                volume=new VolumeSampleProvider(equalizer); ApplyVolume();
+                if(!String.IsNullOrWhiteSpace(outputDeviceId)){try{using(var devices=new MMDeviceEnumerator())selectedDevice=devices.GetDevice(outputDeviceId);}catch{selectedDevice=null;}}
+                output=selectedDevice==null?new WasapiOut(AudioClientShareMode.Shared,true,50):new WasapiOut(selectedDevice,AudioClientShareMode.Shared,true,50);output.Init(new SampleToWaveProvider(volume));output.PlaybackStopped+=Stopped;return true;
             }
-            catch(Exception e){Close(); var failed=MediaFailed;if(failed!=null)failed(e);}
+            catch(Exception e){Close();var failed=MediaFailed;if(failed!=null)failed(e);return false;}
         }
         internal void Play(){if(output!=null)output.Play();}
         internal void Pause(){if(output!=null)output.Pause();}
         private void Stopped(object sender,StoppedEventArgs e){if(suppressStop)return;if(e.Exception!=null){var failed=MediaFailed;if(failed!=null)failed(e.Exception);return;}if(reader!=null&&reader.Position>=reader.Length){var ended=MediaEnded;if(ended!=null)ended(this,EventArgs.Empty);}}
-        internal void Close(){suppressStop=true;try{if(output!=null){output.PlaybackStopped-=Stopped;output.Stop();output.Dispose();}}finally{output=null;if(reader!=null)reader.Dispose();reader=null;volume=null;equalizer=null;suppressStop=false;}}
+        internal void Close(){suppressStop=true;try{if(output!=null){output.PlaybackStopped-=Stopped;output.Stop();output.Dispose();}}finally{output=null;if(reader!=null)reader.Dispose();if(selectedDevice!=null)selectedDevice.Dispose();selectedDevice=null;reader=null;volume=null;equalizer=null;suppressStop=false;}}
         public void Dispose(){Close();}
     }
 }
