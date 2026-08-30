@@ -529,7 +529,7 @@ namespace Digitone
             byte[] cover=ChooseBatchArtwork(tracks); if(cover==null)return;
             if(MessageBox.Show(Window,"Set this artwork on "+tracks.Count+" selected songs?\n\nEach song will be written and verified individually. A failed or unsupported file will not stop the remaining songs. No song backups will be created.","Set album artwork",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
             if(current!=null && tracks.Contains(current))StopAndClear();
-            importing=true; Find<Grid>("LibraryPane").IsEnabled=false;
+            importing=true; SetLibraryArtworkBusy(true);
             try
             {
                 var result=await ApplyBatchArtworkDetailed(tracks,cover,delegate(int done){Status("Writing artwork · "+Math.Min(tracks.Count,done+1)+" / "+tracks.Count);});
@@ -537,7 +537,15 @@ namespace Digitone
                 if(result.Failed.Count>0||result.Unsupported.Count>0){var lines=new List<string>{result.Succeeded.Count+" updated · "+result.Failed.Count+" failed · "+result.Unsupported.Count+" unsupported"};if(result.Failed.Count>0){lines.Add("");lines.Add("Failed:");lines.AddRange(result.Failed.Select(pair=>System.IO.Path.GetFileName(pair.Key)+" — "+pair.Value));}if(result.Unsupported.Count>0){lines.Add("");lines.Add("Unsupported (MP3, FLAC, and M4A can store verified artwork):");lines.AddRange(result.Unsupported.Select(System.IO.Path.GetFileName));}MessageBox.Show(Window,String.Join("\n",lines),"Batch artwork results",MessageBoxButton.OK,result.Failed.Count>0?MessageBoxImage.Warning:MessageBoxImage.Information);}
             }
             catch(Exception e){Save();RefreshTracks();Status("Batch artwork could not continue: "+e.Message);}
-            finally{ importing=false; Find<Grid>("LibraryPane").IsEnabled=true; }
+            finally{ importing=false; SetLibraryArtworkBusy(false); }
+        }
+        internal void SetLibraryArtworkBusy(bool busy)
+        {
+            var pane=Find<Grid>("LibraryPane");
+            // Disabling a WPF ListBox lets the Windows disabled-control theme paint its
+            // default white surface. Block input without changing the themed visuals.
+            pane.IsHitTestVisible=!busy;
+            pane.Cursor=busy?Cursors.Wait:null;
         }
         internal async Task<int> ApplyBatchArtwork(IList<Track> tracks,byte[] cover,Action<int> progress=null)
         {
