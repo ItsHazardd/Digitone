@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 if ([IO.Path]::GetFileName($OutputName) -ne $OutputName -or [IO.Path]::GetExtension($OutputName) -ne '.exe') { throw 'OutputName must be an executable filename inside DAP.' }
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $compiler = Join-Path $framework 'csc.exe'
-$refs = @('System.dll', 'System.Drawing.dll', 'System.Core.dll', 'System.Xaml.dll', 'System.Web.Extensions.dll', 'System.Windows.Forms.dll', 'WPF\WindowsBase.dll', 'WPF\PresentationCore.dll', 'WPF\PresentationFramework.dll')
+$refs = @('System.dll', 'System.Drawing.dll', 'System.Core.dll', 'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll', 'System.Xaml.dll', 'System.Web.Extensions.dll', 'System.Windows.Forms.dll', 'WPF\WindowsBase.dll', 'WPF\PresentationCore.dll', 'WPF\PresentationFramework.dll')
 $arguments = @('/nologo', '/target:winexe', '/optimize+', ('/out:' + (Join-Path $PSScriptRoot $OutputName)), ('/resource:' + (Join-Path $PSScriptRoot 'MainWindow.xaml') + ',MainWindow.xaml'))
 foreach ($reference in $refs) { $arguments += '/reference:' + (Join-Path $framework $reference) }
 $arguments += Join-Path $PSScriptRoot 'Digitone.cs'

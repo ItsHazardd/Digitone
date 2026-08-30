@@ -728,11 +728,13 @@ namespace Digitone
         [STAThread]
         public static int Main(string[] args)
         {
+            if(args.Length>1&&args[0]=="--apply-update")return DigitoneUpdates.ApplyUpdate(args[1]);
 #if !RELEASE
             if (args.Length > 0 && args[0] == "--cover-browser-test") return CoverBrowserTest.Run();
             if (args.Length > 0 && args[0] == "--self-test") return SelfTest.Run(args.Length > 1 ? args[1] : System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TestResults"));
 #endif
             string root = AppDomain.CurrentDomain.BaseDirectory;
+            string healthMarker=args.Length>1&&args[0]=="--update-health"?args[1]:null,stagingRoot=args.Length>2&&args[0]=="--update-health"?args[2]:null;
             bool created;
             string id = Convert.ToBase64String(System.Security.Cryptography.SHA256.Create().ComputeHash(System.Text.Encoding.UTF8.GetBytes(root.ToUpperInvariant()))).Replace('/', '_').Replace('+', '-');
             using (var mutex = new Mutex(true, "Local\\Digitone_" + id, out created))
@@ -745,6 +747,7 @@ namespace Digitone
                     var store = new LibraryStore(System.IO.Path.Combine(root, "Data", "library.json"));
                     var player = new PlayerApp(store, store.Load());
                     player.Window.Loaded += async delegate {
+                        if(!String.IsNullOrWhiteSpace(healthMarker))try{Directory.CreateDirectory(System.IO.Path.GetDirectoryName(healthMarker));File.WriteAllText(healthMarker,AppInfo.Version);if(!String.IsNullOrWhiteSpace(stagingRoot))ThreadPool.QueueUserWorkItem(delegate{Thread.Sleep(5000);try{string full=System.IO.Path.GetFullPath(stagingRoot),safe=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Digitone","Updates")+System.IO.Path.DirectorySeparatorChar;if(full.StartsWith(safe,StringComparison.OrdinalIgnoreCase)&&Directory.Exists(full))Directory.Delete(full,true);}catch{}});}catch{}
                         if(!player.Data.SetupCompleted) {
                             if(player.CreateFirstRun().ShowDialog()!=true) { player.Window.Close(); return; }
                             if(!String.IsNullOrEmpty(player.Data.MainMusicFolder)) await player.Import(new[]{player.Data.MainMusicFolder});
