@@ -215,6 +215,7 @@ namespace Digitone
     }
     public sealed partial class PlayerApp
     {
+        internal const string StartupGreeting = "Howdy Krazy";
         internal readonly Window Window;
         internal readonly Library Data;
         private readonly LibraryStore store;
@@ -723,6 +724,12 @@ namespace Digitone
         private static string FormatTime(double seconds) { return TimeSpan.FromSeconds(Math.Max(0, seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss"); }
         private Window Dialog(string title, int width, int height) { return new Window { Owner = Window, Title = title, Width = width, Height = height, Background = Window.Background, Foreground = Window.Foreground, FontFamily = Window.FontFamily, WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize, Resources = Window.Resources }; }
         private static StackPanel DialogPanel(Window dialog, string description) { var panel = new StackPanel { Margin = new Thickness(25) }; panel.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, FontSize = 14 }); dialog.Content = panel; return panel; }
+        internal void ShowKrazyGreeting()
+        {
+            var dialog=Dialog(StartupGreeting,380,190);var panel=DialogPanel(dialog,StartupGreeting);
+            var close=new Button{Content="Howdy!",IsDefault=true,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,24,0,0),Padding=new Thickness(18,8,18,8)};
+            close.Click+=delegate{dialog.DialogResult=true;};panel.Children.Add(close);dialog.Loaded+=delegate{close.Focus();};dialog.ShowDialog();
+        }
         private string Prompt(string title, string description, string initial)
         {
             var dialog = Dialog(title, 420, 270); var panel = DialogPanel(dialog, description);
@@ -760,6 +767,7 @@ namespace Digitone
                             if(player.CreateFirstRun().ShowDialog()!=true) { player.Window.Close(); return; }
                             if(!String.IsNullOrEmpty(player.Data.MainMusicFolder)) await player.Import(new[]{player.Data.MainMusicFolder});
                         }
+                        player.ShowKrazyGreeting();
                     };
                     app.Run(player.Window); return 0;
                 }

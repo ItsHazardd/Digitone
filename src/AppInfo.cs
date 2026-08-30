@@ -3,7 +3,7 @@ namespace Digitone
     internal static class AppInfo
     {
         // Release.Batch.Day — update this single value after each completed batch.
-        internal const string Version = "2.9.30";
+        internal const string Version = "2.10.30";
         internal const string Changelog =
 @"VERSION 2 · CURRENT CHANGES
 
@@ -22,7 +22,8 @@ ACCESSIBILITY
 • Fixed GitHub update checks on Windows systems that require explicit TLS 1.2.
 • Approved updates now download, verify, install, preserve personal data, restart automatically, and roll back after an unhealthy launch.
 • Added the signed-package release path used to validate automatic updates from an older portable build.
-• Kept the themed library surface intact while batch artwork is being written.";
+• Kept the themed library surface intact while batch artwork is being written.
+• Added a friendly themed greeting when Digitone opens.";
 
         internal const string Release1Changelog =
 @"VERSION 1 · RELEASE HISTORY
