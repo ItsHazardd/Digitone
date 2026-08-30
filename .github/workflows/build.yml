@@ -1,0 +1,32 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Compile development build
+        shell: powershell
+        run: .\src\Build.ps1 -OutputName Digitone.dev.exe
+
+      - name: Run test suite
+        shell: powershell
+        run: |
+          .\src\Digitone.dev.exe --self-test "$env:RUNNER_TEMP\DigitoneTests"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile optimized x64 release
+        shell: powershell
+        run: .\src\Build.ps1 -OutputName Digitone.exe -Release

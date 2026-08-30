@@ -1,0 +1,24 @@
+# Build outputs
+*.exe
+src/*.exe
+
+# Personal/runtime data
+Data/
+DigiMusic/
+Music/
+Deleted/
+Backups/
+TestResults/
+Tools/
+*.bak
+*.old.*
+
+# IDE and OS files
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+
+.public-test/

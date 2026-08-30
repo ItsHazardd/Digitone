@@ -1,0 +1,155 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+
+namespace Digitone
+{
+    public sealed partial class PlayerApp
+    {
+        internal static TextBlock FolderLink(Window owner, string path, Action<string> open = null)
+        {
+            var label = SettingsText("",12); label.Margin = new Thickness(0,4,0,8);
+            if (String.IsNullOrWhiteSpace(path)) { label.Text = "No folder selected"; return label; }
+            var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(path)) { ToolTip = "Open folder in File Explorer", Cursor = System.Windows.Input.Cursors.Hand };
+            link.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,"BC1D3A8");
+            link.Click += delegate
+            {
+                if (!LocalFiles.IsLocal(path) || !Directory.Exists(path)) { MessageBox.Show(owner,"This folder is unavailable. Reconnect its drive or choose another folder.","Folder unavailable"); return; }
+                try { if (open != null) open(path); else System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = Path.GetFullPath(path), UseShellExecute = true }); }
+                catch (Exception e) { MessageBox.Show(owner,"Could not open this folder: " + e.Message,"Open folder"); }
+            };
+            label.Inlines.Add(link); return label;
+        }
+        private static TextBlock SettingsText(string text, double size, bool muted = false)
+        {
+            var label = new TextBlock { Text = text, FontSize = size, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,8) };
+            if (size >= 24) { label.FontFamily = new FontFamily("Impact"); label.FontStyle = FontStyles.Italic; label.FontWeight = FontWeights.Bold; }
+            label.SetResourceReference(TextBlock.ForegroundProperty, muted ? "B919A92" : "BEEEFE8"); return label;
+        }
+        private static Border SettingsCard(UIElement child)
+        {
+            var card = new Border { CornerRadius = new CornerRadius(0), Padding = new Thickness(20), Margin = new Thickness(0,0,0,16), BorderThickness = new Thickness(3,1,1,1), Child = child };
+            card.SetResourceReference(Border.BackgroundProperty, "B1C211D"); card.SetResourceReference(Border.BorderBrushProperty, "B303630"); return card;
+        }
+        internal Window CreateSettings()
+        {
+            var dialog = new Window { Owner = Window, Title = "Settings · Digitone", Width = 860, Height = 700, MinWidth = 740, MinHeight = 540, WindowStartupLocation = WindowStartupLocation.CenterOwner, Resources = Window.Resources, FontFamily = Window.FontFamily, Icon = Window.Icon, UseLayoutRounding = true };
+            dialog.SetResourceReference(Control.BackgroundProperty, "B161917"); dialog.SetResourceReference(Control.ForegroundProperty, "BEEEFE8");
+            var root = new Grid(); root.SetResourceReference(Panel.BackgroundProperty, "B161917"); dialog.Content = root;
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(185) }); root.ColumnDefinitions.Add(new ColumnDefinition());
+            var nav = new StackPanel { Margin = new Thickness(18,28,18,20) }; var rail = new Border { Child = nav, BorderThickness = new Thickness(0,0,2,0), BorderBrush = Themes.Brush(Window,"C1D3A8") }; rail.SetResourceReference(Border.BorderBrushProperty,"BC1D3A8"); rail.SetResourceReference(Border.BackgroundProperty,"B1C211D"); root.Children.Add(rail);
+            nav.Children.Add(SettingsText("DIGITONE", 25)); nav.Children.Add(SettingsText("PREFERENCES", 10, true));
+            var appearanceButton = new Button { Content = "Appearance", Margin = new Thickness(0,24,0,8), HorizontalContentAlignment = HorizontalAlignment.Left };
+            var libraryButton = new Button { Content = "Music folders", Margin = new Thickness(0,0,0,8), HorizontalContentAlignment = HorizontalAlignment.Left };
+            nav.Children.Add(appearanceButton); nav.Children.Add(libraryButton);
+            var content = new Grid { Margin = new Thickness(28,28,28,20) }; Grid.SetColumn(content,1); root.Children.Add(content);
+            content.RowDefinitions.Add(new RowDefinition()); content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var appearance = new StackPanel(); var library = new StackPanel();
+            var mediaKeys = new CheckBox { Content = "Global media keys", IsChecked = Data.GlobalMediaKeys != false, Margin = new Thickness(0,0,0,8) };
+            var mediaOptions = new StackPanel(); mediaOptions.Children.Add(mediaKeys); mediaOptions.Children.Add(SettingsText("Play, pause and skip while Digitone is in the background. Turn off to let another player use these keys. System volume keys stay with Windows.",12,true)); appearance.Children.Add(SettingsCard(mediaOptions));
+            mediaKeys.Click += delegate { Data.GlobalMediaKeys = mediaKeys.IsChecked == true; ConfigureMediaKeys(); Save(); };
+            var automaticLyrics=new CheckBox { Content="Automatically find and save missing lyrics",IsChecked=Data.AutoLyrics!=false,Margin=new Thickness(0,12,0,8) }; mediaOptions.Children.Add(automaticLyrics);
+            mediaOptions.Children.Add(SettingsText("When a song starts, send its artist and title to lyrics.ovh. Existing lyrics are kept; manual search remains available.",12,true));
+            automaticLyrics.Click+=delegate { Data.AutoLyrics=automaticLyrics.IsChecked==true; if(Data.AutoLyrics==false && autoLyricsCancellation!=null) autoLyricsCancellation.Cancel(); Save(); if(Data.AutoLyrics==true && current!=null) AutoFindLyrics(current); };
+            var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; content.Children.Add(scroll);
+            var footer = new DockPanel { Margin = new Thickness(0,16,0,0) }; Grid.SetRow(footer,1); content.Children.Add(footer);
+            var done = new Button { Content = "Done", IsCancel = true, Margin = new Thickness(0), MinWidth = 84 }; DockPanel.SetDock(done,Dock.Right); footer.Children.Add(done); footer.Children.Add(SettingsText("Changes save automatically",11,true));
+            Action<bool> show = delegate(bool first) { scroll.Content = first ? appearance : library; appearanceButton.SetResourceReference(Control.BackgroundProperty,first ? "B354233" : "B1C211D"); libraryButton.SetResourceReference(Control.BackgroundProperty,first ? "B1C211D" : "B354233"); scroll.ScrollToTop(); Motion.Enter(first ? appearance : library, 18, 0); };
+            appearanceButton.Click += delegate { show(true); }; libraryButton.Click += delegate { show(false); };
+            appearance.Children.Add(SettingsText("Appearance",28)); appearance.Children.Add(SettingsText("Choose the color of your signal.",13,true));
+            var themeContent = new StackPanel{Name="ThemeSettingsSection"}; themeContent.Children.Add(SettingsText("Color theme",16)); themeContent.Children.Add(SettingsText("One palette across your library, player and live wave.",12,true));
+            var previews = new Grid { Margin = new Thickness(0,14,0,0) }; themeContent.Children.Add(previews);
+            var choices = new List<Button>();
+            var cardTemplate = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Grid><Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1'><Border.RenderTransform><SkewTransform AngleX='-5'/></Border.RenderTransform></Border><ContentPresenter Margin='16,12,16,12' HorizontalAlignment='Stretch' VerticalAlignment='Center'/></Grid></ControlTemplate>");
+            Action refreshThemes = delegate { foreach (var b in choices) { bool selected = (string)b.Tag == Data.ThemeName; b.SetResourceReference(Control.BackgroundProperty, selected ? "B354233" : "B232823"); b.ToolTip = selected ? "Selected theme" : "Use " + b.Tag; } };
+            foreach (string theme in Themes.Names)
+            {
+                int column = previews.ColumnDefinitions.Count; previews.ColumnDefinitions.Add(new ColumnDefinition());
+                var stack = new StackPanel(); Color accentColor = Themes.Map((Color)ColorConverter.ConvertFromString("#C1D3A8"),theme);
+                var preview = new Grid { Height = 84, Background = new SolidColorBrush(Themes.Map((Color)ColorConverter.ConvertFromString("#161917"),theme)) };
+                preview.Children.Add(new Border { Width = 18, HorizontalAlignment = HorizontalAlignment.Left, Background = new SolidColorBrush(Themes.Map((Color)ColorConverter.ConvertFromString("#354233"),theme)) });
+                preview.Children.Add(new System.Windows.Shapes.Ellipse { Width = 38, Height = 38, Stroke = new SolidColorBrush(accentColor), StrokeThickness = 2, Margin = new Thickness(12,0,0,10) });
+                preview.Children.Add(new Border { Height = 3, Background = new SolidColorBrush(accentColor), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(26,0,8,10), CornerRadius = new CornerRadius(2) });
+                var previewFrame = new Border { Child = preview, BorderBrush = Brushes.Black, BorderThickness = new Thickness(2), Margin = new Thickness(0,0,0,12), RenderTransform = new SkewTransform(-5,0) };
+                preview.Children.Clear();
+                preview.Children.Add(new Viewbox { Stretch=Stretch.UniformToFill,ClipToBounds=true,Child=ThemeScenes.Build(theme,600) });
+                stack.Children.Add(previewFrame); stack.Children.Add(SettingsText(Themes.Label(theme),11));
+                var button = new Button { Content = stack, Tag = theme, Template = cardTemplate, Height = 150, BorderBrush = Brushes.Transparent, Margin = new Thickness(6,0,6,0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                button.MouseEnter += delegate { button.SetResourceReference(Control.BorderBrushProperty,"BC1D3A8"); };
+                button.MouseLeave += delegate { button.BorderBrush = Brushes.Transparent; };
+                button.GotKeyboardFocus += delegate { button.SetResourceReference(Control.BorderBrushProperty,"BC1D3A8"); };
+                button.LostKeyboardFocus += delegate { button.BorderBrush = Brushes.Transparent; };
+                string selectedTheme = theme; button.Click += delegate { ApplyTheme(selectedTheme); Save(); refreshThemes(); }; Grid.SetColumn(button,column); previews.Children.Add(button); choices.Add(button);
+            }
+            appearance.Children.Add(SettingsCard(themeContent));
+            var custom = new StackPanel{Name="CustomColorSettingsSection"}; custom.Children.Add(SettingsText("Custom color",16));
+            custom.Children.Add(SettingsText("Choose an accent. Dark colors are softened for readable controls.",12,true));
+            var customRow = new WrapPanel(); custom.Children.Add(customRow);
+            var hex = new TextBox { Name = "CustomColorHex", Text = Data.CustomThemeColor ?? "#86F4C2", Width = 125, MaxLength = 7, Margin = new Thickness(0,0,12,8), ToolTip = "Hex color, such as #86F4C2" };
+            System.Windows.Automation.AutomationProperties.SetName(hex,"Custom theme hex color"); customRow.Children.Add(hex);
+            var pick = new Button { Content = "Pick color…", Margin = new Thickness(0,0,12,8) }; customRow.Children.Add(pick);
+            var use = new Button { Name = "ApplyCustomColor", Content = "Apply color", Margin = new Thickness(0,0,0,8) }; customRow.Children.Add(use);
+            var feedback = SettingsText("",11,true); custom.Children.Add(feedback);
+            Action applyColor = delegate { Color color; if (!Themes.TryColor(hex.Text,out color)) { feedback.Text = "Enter 3 or 6 hex digits, such as #86F4C2."; return; } Data.CustomThemeColor = "#" + color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2"); hex.Text = Data.CustomThemeColor; ApplyTheme("Custom"); Save(); refreshThemes(); feedback.Text = "Custom color applied."; };
+            use.Click += delegate { applyColor(); };
+            hex.KeyDown += delegate(object sender, System.Windows.Input.KeyEventArgs e) { if (e.Key == System.Windows.Input.Key.Enter) { applyColor(); e.Handled = true; } };
+            pick.Click += delegate { using (var picker = new System.Windows.Forms.ColorDialog { FullOpen = true, AnyColor = true }) { Color color; if (Themes.TryColor(hex.Text,out color)) picker.Color = System.Drawing.Color.FromArgb(color.R,color.G,color.B); if (picker.ShowDialog() == System.Windows.Forms.DialogResult.OK) { hex.Text = "#" + picker.Color.R.ToString("X2") + picker.Color.G.ToString("X2") + picker.Color.B.ToString("X2"); applyColor(); } } };
+            appearance.Children.Add(SettingsCard(custom));
+            var modePanel=new StackPanel{Name="SurfaceModeSettingsSection"}; modePanel.Children.Add(SettingsText("Light / dark surfaces",16)); modePanel.Children.Add(SettingsText("Light mode reverses the surface contrast while keeping your selected accent.",12,true));
+            var modeRow=new WrapPanel { Margin=new Thickness(0,10,0,0) }; var darkMode=new Button{Content="Dark",Margin=new Thickness(0,0,10,0)}; var lightMode=new Button{Content="Light"}; modeRow.Children.Add(darkMode); modeRow.Children.Add(lightMode); modePanel.Children.Add(modeRow);
+            Action<string> setMode=delegate(string mode){ Data.AppearanceMode=mode; ApplyTheme(Data.ThemeName); Save(); darkMode.BorderBrush=mode=="Dark"?accent:Brushes.Transparent; lightMode.BorderBrush=mode=="Light"?accent:Brushes.Transparent; }; darkMode.Click+=delegate{setMode("Dark");}; lightMode.Click+=delegate{setMode("Light");}; setMode(Data.AppearanceMode=="Light"?"Light":"Dark"); appearance.Children.Add(SettingsCard(modePanel));
+            var neonPanel=new StackPanel{Name="NeonSettingsSection"};neonPanel.Children.Add(SettingsText("Neon accents",16));var neonToggle=new CheckBox{Name="NeonToggle",Content="Enable accent glow",IsChecked=Data.NeonEnabled,Margin=new Thickness(0,8,0,8)};neonPanel.Children.Add(neonToggle);neonPanel.Children.Add(SettingsText("Adds a restrained glow to active controls, sliders, the record, and visualizer lines. Off adds no rendering cost.",12,true));neonToggle.Click+=delegate{Data.NeonEnabled=neonToggle.IsChecked==true;ApplyNeon();Save();};appearance.Children.Add(SettingsCard(neonPanel));
+            var eqPanel=new StackPanel{Name="EqualizerSettingsSection"}; eqPanel.Children.Add(SettingsText("Equalizer",16)); eqPanel.Children.Add(SettingsText("Five-band playback EQ. It never changes your music files; Off bypasses every filter.",12,true));
+            var eqToggle=new CheckBox{Content="Enable equalizer",IsChecked=Data.EqualizerEnabled,Margin=new Thickness(0,12,0,8)}; eqPanel.Children.Add(eqToggle);
+            if(Data.EqualizerGains==null||Data.EqualizerGains.Length!=5)Data.EqualizerGains=new double[5];
+            var eqSliders=new List<Slider>(); string[] eqNames={"60 Hz · Bass","230 Hz · Warmth","910 Hz · Mid","3.6 kHz · Presence","14 kHz · Air"};
+            for(int i=0;i<5;i++){int band=i;var row=new Grid{Margin=new Thickness(0,4,0,4)};row.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(150)});row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(58)});row.Children.Add(SettingsText(eqNames[i],11));var slider=new Slider{Minimum=-12,Maximum=12,Value=Data.EqualizerGains[i],TickFrequency=1,IsSnapToTickEnabled=false,IsMoveToPointEnabled=true,Margin=new Thickness(8,0,8,0)};Grid.SetColumn(slider,1);row.Children.Add(slider);var value=SettingsText(slider.Value.ToString("+0.0;-0.0;0.0")+" dB",11,true);value.HorizontalAlignment=HorizontalAlignment.Right;Grid.SetColumn(value,2);row.Children.Add(value);slider.ValueChanged+=delegate{Data.EqualizerGains[band]=slider.Value;value.Text=slider.Value.ToString("+0.0;-0.0;0.0")+" dB";media.ConfigureEqualizer(Data.EqualizerEnabled,Data.EqualizerGains);};Action commit=delegate{Save();};EnableDirectSlider(slider,null,commit);slider.LostKeyboardFocus+=delegate{commit();};eqSliders.Add(slider);eqPanel.Children.Add(row);}
+            var eqButtons=new WrapPanel{Margin=new Thickness(0,10,0,0)};var flat=new Button{Content="Reset flat"};eqButtons.Children.Add(flat);eqPanel.Children.Add(eqButtons);flat.Click+=delegate{foreach(var slider in eqSliders)slider.Value=0;Save();};eqToggle.Click+=delegate{Data.EqualizerEnabled=eqToggle.IsChecked==true;media.ConfigureEqualizer(Data.EqualizerEnabled,Data.EqualizerGains);Save();};appearance.Children.Add(SettingsCard(eqPanel));
+            var toolsPanel=new StackPanel(); toolsPanel.Children.Add(SettingsText("Download tools",16)); toolsPanel.Children.Add(SettingsText("Manually update yt-dlp and Deno. Digitone never checks in the background; FFmpeg stays on the packaged, tested build.",12,true)); var updateTools=new Button{Content="Update dependencies",HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,10,0,0)}; var toolStatus=SettingsText("",11,true); toolsPanel.Children.Add(updateTools); toolsPanel.Children.Add(toolStatus); appearance.Children.Add(SettingsCard(toolsPanel));
+            updateTools.Click+=async delegate{ updateTools.IsEnabled=false; toolStatus.Text="Checking signed upstream updates…"; try{ string report=await UpdateDependencies(); toolStatus.Text=report; Downloads.RefreshTools(); }catch(Exception e){ toolStatus.Text="Update stopped: "+e.Message; }finally{updateTools.IsEnabled=true;} };
+            var note=new StackPanel{Name="CreditsSettingsSection"};note.Children.Add(SettingsText("Made for the music",18));note.Children.Add(SettingsText("Digitone was made by GEMMA in conjunction with Hazzy, combining local development support with Hazzy's creative direction, design decisions, and hands-on testing.",12,true));var share=SettingsText("70% GEMMA · 30% HAZZY",12);share.FontWeight=FontWeights.SemiBold;share.Margin=new Thickness(0,4,0,14);note.Children.Add(share);var versionRow=new DockPanel();var changelog=new Button{Name="ChangelogButton",Content="Changelog",HorizontalAlignment=HorizontalAlignment.Right,Padding=new Thickness(12,7,12,7)};DockPanel.SetDock(changelog,Dock.Right);versionRow.Children.Add(changelog);var version=SettingsText("Version "+AppInfo.Version,11,true);version.Name="VersionLabel";version.VerticalAlignment=VerticalAlignment.Center;version.Margin=new Thickness(0);versionRow.Children.Add(version);note.Children.Add(versionRow);changelog.Click+=delegate{ShowChangelog(dialog);};appearance.Children.Add(SettingsCard(note));
+            library.Children.Add(SettingsText("Music folders",28)); library.Children.Add(SettingsText("Choose where your collection lives.",13,true));
+            var mainPanel = new StackPanel(); mainPanel.Children.Add(SettingsText("Main folder",16)); var mainPath = new StackPanel(); mainPanel.Children.Add(mainPath); var change = new Button { Content = "Choose folder…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0,6,0,0) }; mainPanel.Children.Add(change); library.Children.Add(SettingsCard(mainPanel));
+            var otherPanel = new StackPanel(); otherPanel.Children.Add(SettingsText("Additional folders",16)); var folderRows = new StackPanel(); otherPanel.Children.Add(folderRows); var add = new Button { Content = "+ Add folder", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0,8,0,0) }; otherPanel.Children.Add(add); library.Children.Add(SettingsCard(otherPanel));
+            Action refresh = null;
+            refresh = delegate { mainPath.Children.Clear(); mainPath.Children.Add(FolderLink(dialog,Data.MainMusicFolder)); folderRows.Children.Clear(); var paths = Data.MusicFolders.Where(p => !String.Equals(p,Data.MainMusicFolder,StringComparison.OrdinalIgnoreCase)).ToArray(); if (paths.Length == 0) folderRows.Children.Add(SettingsText("No additional folders yet.",12,true)); foreach (string path in paths) { var row = new DockPanel { Margin = new Thickness(0,5,0,5) }; var remove = new Button { Content = "Forget", Padding = new Thickness(10,6,10,6), Margin = new Thickness(12,0,0,0), ToolTip = "Remove this saved location. Your songs and files stay." }; DockPanel.SetDock(remove,Dock.Right); row.Children.Add(remove); var label = FolderLink(dialog,path); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new Thickness(0); row.Children.Add(label); folderRows.Children.Add(row); string chosen = path; remove.Click += delegate { Data.MusicFolders.Remove(chosen); Save(); refresh(); }; } };
+            Action<bool> choose = delegate(bool primary) { if (importing || Downloads.Busy) { MessageBox.Show(dialog,"Finish the current file operation first."); return; } using (var picker = new System.Windows.Forms.FolderBrowserDialog { Description = primary ? "Choose your main music folder" : "Add a music folder" }) if (picker.ShowDialog() == System.Windows.Forms.DialogResult.OK) { if (!LocalFiles.IsLocal(picker.SelectedPath)) { MessageBox.Show(dialog,"Choose a local folder."); return; } RememberMusicFolders(new[] { picker.SelectedPath }); if (primary) {Data.MainMusicFolder = picker.SelectedPath;RemoveMainFolderPlaylist();RefreshPlaylists();RefreshPlaylistGrid();} Save(); refresh(); var ignored = Import(new[] { picker.SelectedPath },false,!primary); } };
+            change.Click += delegate { choose(true); }; add.Click += delegate { choose(false); };
+            var scan = new Button { Content = "Rescan folders", HorizontalAlignment = HorizontalAlignment.Left }; library.Children.Add(scan); scan.Click += async delegate { scan.IsEnabled = false; try { await RescanMusicFolders(); refresh(); } finally { scan.IsEnabled = true; } };
+            library.Children.Add(SettingsText("Find newly added songs. Forgetting a folder never deletes music.",11,true));
+            var locations = new StackPanel { Visibility = Visibility.Collapsed }; foreach (string path in Data.Tracks.Select(t => Path.GetDirectoryName(t.Path)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(p => p)) locations.Children.Add(FolderLink(dialog,path));
+            var reveal = new Button { Content = "Show existing song locations", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0,8,0,12) }; library.Children.Add(reveal); library.Children.Add(locations); reveal.Click += delegate { bool visible = locations.Visibility != Visibility.Visible; locations.Visibility = visible ? Visibility.Visible : Visibility.Collapsed; reveal.Content = visible ? "Hide existing song locations" : "Show existing song locations"; };
+            dialog.Tag = libraryButton; refresh(); refreshThemes(); show(true); return dialog;
+        }
+        private void ShowChangelog(Window owner)
+        {
+            var dialog=new Window{Owner=owner,Title="Digitone · Changelog",Width=760,Height=620,MinWidth=620,MinHeight=420,WindowStartupLocation=WindowStartupLocation.CenterOwner,Resources=Window.Resources,FontFamily=Window.FontFamily,Icon=Window.Icon,UseLayoutRounding=true};
+            dialog.SetResourceReference(Control.BackgroundProperty,"B161917");dialog.SetResourceReference(Control.ForegroundProperty,"BEEEFE8");
+            var root=new Grid{Margin=new Thickness(28)};root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});dialog.Content=root;
+            var heading=SettingsText("CHANGELOG ARCHIVE",28);heading.Margin=new Thickness(0,0,0,18);root.Children.Add(heading);
+            var body=new Grid();body.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(210)});body.ColumnDefinitions.Add(new ColumnDefinition());Grid.SetRow(body,1);root.Children.Add(body);
+            var versions=new StackPanel{Name="ChangelogVersions",Margin=new Thickness(0,0,20,0)};body.Children.Add(versions);
+            var text=new TextBlock{Name="ChangelogText",TextWrapping=TextWrapping.Wrap,LineHeight=21,FontSize=12};text.SetResourceReference(TextBlock.ForegroundProperty,"BEEEFE8");var scroll=new ScrollViewer{Content=text,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Padding=new Thickness(18,0,16,0)};scroll.SetResourceReference(Control.BorderBrushProperty,"B4C574B");scroll.BorderThickness=new Thickness(1,0,0,0);Grid.SetColumn(scroll,1);body.Children.Add(scroll);
+            Action<int> show=delegate(int index){text.Text=AppInfo.Changelogs[index];foreach(Button button in versions.Children.OfType<Button>())button.BorderBrush=Brushes.Transparent;((Button)versions.Children[index]).BorderBrush=accent;};
+            for(int i=0;i<AppInfo.ChangelogVersions.Length;i++){int index=i;var button=new Button{Name="ChangelogVersion"+i,Content=AppInfo.ChangelogVersions[i],HorizontalContentAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,8),Padding=new Thickness(12,10,12,10)};button.Click+=delegate{show(index);};versions.Children.Add(button);}show(0);
+            var close=new Button{Content="Close",IsCancel=true,HorizontalAlignment=HorizontalAlignment.Right,MinWidth=88,Margin=new Thickness(0,18,0,0)};Grid.SetRow(close,2);root.Children.Add(close);NativeChrome.Apply(dialog);dialog.ShowDialog();
+        }
+        private async Task<string> UpdateDependencies()
+        {
+            if(!AudioDownloader.ToolsReady)throw new IOException("The packaged Tools folder is incomplete.");
+            Func<string,string,Task<string>> run=delegate(string file,string arguments){ return Task.Run(delegate{ var info=new ProcessStartInfo(file,arguments){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=AudioDownloader.ToolRoot};using(var job=new ProcessJob())using(var process=Process.Start(info)){job.Attach(process);var output=Task.Run(delegate{return process.StandardOutput.ReadToEnd();});var error=Task.Run(delegate{return process.StandardError.ReadToEnd();});if(!process.WaitForExit(120000)){job.Dispose();throw new IOException(System.IO.Path.GetFileName(file)+" updater timed out.");}string report=(output.Result+Environment.NewLine+error.Result).Trim();if(process.ExitCode!=0)throw new IOException(System.IO.Path.GetFileName(file)+" failed (exit "+process.ExitCode+"): "+report);return report;} }); };
+            string yt=await run(Path.Combine(AudioDownloader.ToolRoot,"yt-dlp.exe"),"--ignore-config --update-to stable");
+            string deno=await run(Path.Combine(AudioDownloader.ToolRoot,"deno.exe"),"upgrade");
+            bool current=(yt.IndexOf("up to date",StringComparison.OrdinalIgnoreCase)>=0||yt.IndexOf("Latest version",StringComparison.OrdinalIgnoreCase)>=0)&&(deno.IndexOf("up to date",StringComparison.OrdinalIgnoreCase)>=0||deno.IndexOf("latest",StringComparison.OrdinalIgnoreCase)>=0||deno.IndexOf("most recent",StringComparison.OrdinalIgnoreCase)>=0);
+            return current?"Everything is already up to date.":"Dependency update completed successfully. Restart Digitone before downloading music.";
+        }
+    }
+}
+
+
