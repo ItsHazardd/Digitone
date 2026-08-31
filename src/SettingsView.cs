@@ -66,28 +66,28 @@ namespace Digitone
             appearanceButton.Click += delegate { show(true); }; libraryButton.Click += delegate { show(false); };
             appearance.Children.Add(SettingsText("Appearance",28)); appearance.Children.Add(SettingsText("Choose the color of your signal.",13,true));
             var themeContent = new StackPanel{Name="ThemeSettingsSection"}; themeContent.Children.Add(SettingsText("Color theme",16)); themeContent.Children.Add(SettingsText("One palette across your library, player and live wave.",12,true));
-            var previews = new Grid { Margin = new Thickness(0,14,0,0) }; themeContent.Children.Add(previews);
+            var previews = new StackPanel { Orientation=Orientation.Horizontal, Margin = new Thickness(16,0,16,0) };
+            var previewScroll = new ScrollViewer { Name="ThemePreviewScroll",Content=previews,Margin=new Thickness(0,14,0,0),HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,CanContentScroll=false }; themeContent.Children.Add(previewScroll);
             var choices = new List<Button>();
             var cardTemplate = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Grid><Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1'><Border.RenderTransform><SkewTransform AngleX='-5'/></Border.RenderTransform></Border><ContentPresenter Margin='16,12,16,12' HorizontalAlignment='Stretch' VerticalAlignment='Center'/></Grid></ControlTemplate>");
             Action refreshThemes = delegate { foreach (var b in choices) { bool selected = (string)b.Tag == Data.ThemeName; b.SetResourceReference(Control.BackgroundProperty, selected ? "B354233" : "B232823"); b.ToolTip = selected ? "Selected theme" : "Use " + b.Tag; } };
             foreach (string theme in Themes.Names)
             {
-                int column = previews.ColumnDefinitions.Count; previews.ColumnDefinitions.Add(new ColumnDefinition());
                 var stack = new StackPanel(); Color accentColor = Themes.Map((Color)ColorConverter.ConvertFromString("#C1D3A8"),theme);
                 var preview = new Grid { Height = 84, Background = new SolidColorBrush(Themes.Map((Color)ColorConverter.ConvertFromString("#161917"),theme)) };
                 preview.Children.Add(new Border { Width = 18, HorizontalAlignment = HorizontalAlignment.Left, Background = new SolidColorBrush(Themes.Map((Color)ColorConverter.ConvertFromString("#354233"),theme)) });
                 preview.Children.Add(new System.Windows.Shapes.Ellipse { Width = 38, Height = 38, Stroke = new SolidColorBrush(accentColor), StrokeThickness = 2, Margin = new Thickness(12,0,0,10) });
                 preview.Children.Add(new Border { Height = 3, Background = new SolidColorBrush(accentColor), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(26,0,8,10), CornerRadius = new CornerRadius(2) });
-                var previewFrame = new Border { Child = preview, BorderBrush = Brushes.Black, BorderThickness = new Thickness(2), Margin = new Thickness(0,0,0,12), RenderTransform = new SkewTransform(-5,0) };
+                var previewFrame = new Border { Child = preview, BorderBrush = Brushes.Black, BorderThickness = new Thickness(2), Margin = new Thickness(7,0,3,12), RenderTransform = new SkewTransform(-5,0),RenderTransformOrigin=new Point(.5,.5) };
                 preview.Children.Clear();
                 preview.Children.Add(new Viewbox { Stretch=Stretch.UniformToFill,ClipToBounds=true,Child=ThemeScenes.Build(theme,600) });
-                stack.Children.Add(previewFrame); stack.Children.Add(SettingsText(Themes.Label(theme),11));
-                var button = new Button { Content = stack, Tag = theme, Template = cardTemplate, Height = 150, BorderBrush = Brushes.Transparent, Margin = new Thickness(6,0,6,0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                stack.Children.Add(previewFrame); var themeLabel=SettingsText(Themes.Label(theme),11);themeLabel.TextWrapping=TextWrapping.Wrap;themeLabel.Height=34;themeLabel.TextTrimming=TextTrimming.None;stack.Children.Add(themeLabel);
+                var button = new Button { Content = stack, Tag = theme, Template = cardTemplate, Width=118,Height = 158, BorderBrush = Brushes.Transparent, Margin = new Thickness(6,0,6,0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
                 button.MouseEnter += delegate { button.SetResourceReference(Control.BorderBrushProperty,"BC1D3A8"); };
                 button.MouseLeave += delegate { button.BorderBrush = Brushes.Transparent; };
                 button.GotKeyboardFocus += delegate { button.SetResourceReference(Control.BorderBrushProperty,"BC1D3A8"); };
                 button.LostKeyboardFocus += delegate { button.BorderBrush = Brushes.Transparent; };
-                string selectedTheme = theme; button.Click += delegate { ApplyTheme(selectedTheme); Save(); refreshThemes(); }; Grid.SetColumn(button,column); previews.Children.Add(button); choices.Add(button);
+                string selectedTheme = theme; button.Click += delegate { ApplyTheme(selectedTheme); Save(); refreshThemes(); }; previews.Children.Add(button); choices.Add(button);
             }
             appearance.Children.Add(SettingsCard(themeContent));
             var custom = new StackPanel{Name="CustomColorSettingsSection"}; custom.Children.Add(SettingsText("Custom color",16));
@@ -106,7 +106,7 @@ namespace Digitone
             var modePanel=new StackPanel{Name="SurfaceModeSettingsSection"}; modePanel.Children.Add(SettingsText("Light / dark surfaces",16)); modePanel.Children.Add(SettingsText("Light mode reverses the surface contrast while keeping your selected accent.",12,true));
             var modeRow=new WrapPanel { Margin=new Thickness(0,10,0,0) }; var darkMode=new Button{Content="Dark",Margin=new Thickness(0,0,10,0)}; var lightMode=new Button{Content="Light"}; modeRow.Children.Add(darkMode); modeRow.Children.Add(lightMode); modePanel.Children.Add(modeRow);
             Action<string> setMode=delegate(string mode){ Data.AppearanceMode=mode; ApplyTheme(Data.ThemeName); Save(); darkMode.BorderBrush=mode=="Dark"?accent:Brushes.Transparent; lightMode.BorderBrush=mode=="Light"?accent:Brushes.Transparent; }; darkMode.Click+=delegate{setMode("Dark");}; lightMode.Click+=delegate{setMode("Light");}; setMode(Data.AppearanceMode=="Light"?"Light":"Dark"); appearance.Children.Add(SettingsCard(modePanel));
-            var neonPanel=new StackPanel{Name="NeonSettingsSection"};neonPanel.Children.Add(SettingsText("Neon accents",16));var neonToggle=new CheckBox{Name="NeonToggle",Content="Enable accent glow",IsChecked=Data.NeonEnabled,Margin=new Thickness(0,8,0,8)};neonPanel.Children.Add(neonToggle);neonPanel.Children.Add(SettingsText("Adds a restrained glow to active controls, sliders, the record, and visualizer lines. Off adds no rendering cost.",12,true));neonToggle.Click+=delegate{Data.NeonEnabled=neonToggle.IsChecked==true;ApplyNeon();Save();};appearance.Children.Add(SettingsCard(neonPanel));
+            var neonPanel=new StackPanel{Name="NeonSettingsSection"};neonPanel.Children.Add(SettingsText("Neon accents",16));var neonToggle=new CheckBox{Name="NeonToggle",Content="Enable accent glow",IsChecked=Data.NeonEnabled,Margin=new Thickness(0,8,0,8)};neonPanel.Children.Add(neonToggle);neonPanel.Children.Add(SettingsText("Adds a restrained glow to active controls, sliders, the record, visualizers, and animated theme details. Off adds no rendering cost.",12,true));neonToggle.Click+=delegate{Data.NeonEnabled=neonToggle.IsChecked==true;LayoutAmbient();ApplyNeon();Save();};appearance.Children.Add(SettingsCard(neonPanel));
             var eqPanel=new StackPanel{Name="EqualizerSettingsSection"}; eqPanel.Children.Add(SettingsText("Equalizer",16)); eqPanel.Children.Add(SettingsText("Five-band playback EQ. It never changes your music files; Off bypasses every filter.",12,true));
             var eqToggle=new CheckBox{Content="Enable equalizer",IsChecked=Data.EqualizerEnabled,Margin=new Thickness(0,12,0,8)}; eqPanel.Children.Add(eqToggle);
             if(Data.EqualizerGains==null||Data.EqualizerGains.Length!=5)Data.EqualizerGains=new double[5];

@@ -28,7 +28,7 @@ namespace Digitone
             Find<Button>("MainSpectrumButton").BorderBrush=Data.MainVisualizerMode=="Spectrum"?accent:Brushes.Transparent;
             Find<Button>("MainVisualizerOffButton").BorderBrush=Data.MainVisualizerMode=="Off"?accent:Brushes.Transparent;
             Find<TextBlock>("WaveLabel").Visibility=Data.MainVisualizerMode=="Off"?Visibility.Collapsed:Visibility.Visible;
-            Find<Canvas>("MainSpectrum").Height=Data.MainVisualizerMode=="Spectrum"?72:64;Find<Viewbox>("DefaultArt").MaxHeight=Double.PositiveInfinity;Find<Border>("RecordArt").MinHeight=Data.MainVisualizerMode=="Spectrum"?190:90;
+            Find<Canvas>("MainSpectrum").Height=Data.MainVisualizerMode=="Spectrum"?72:64;Find<Viewbox>("DefaultArt").MaxHeight=Double.PositiveInfinity;Find<Viewbox>("DefaultArt").MaxWidth=Double.PositiveInfinity;Find<Border>("RecordArt").MinHeight=0;
             ApplyNeon();Save(); DrawLiveWave(lastWave);
         }
         internal void SetVisualizer(string mode)
@@ -42,7 +42,7 @@ namespace Digitone
         private Effect NeonGlow(){if(!Data.NeonEnabled)return null;var color=(accent as SolidColorBrush)==null?Colors.Cyan:((SolidColorBrush)accent).Color;var glow=new DropShadowEffect{Color=color,BlurRadius=14,ShadowDepth=0,Opacity=.82,RenderingBias=RenderingBias.Performance};if(glow.CanFreeze)glow.Freeze();return glow;}
         internal void ApplyNeon()
         {
-            Effect glow=NeonGlow();smallTrace.Effect=glow;Find<Canvas>("MainSpectrum").Effect=glow;Find<Grid>("RecordDisc").Effect=glow;Find<Slider>("Seek").Effect=glow;Find<Slider>("Volume").Effect=glow;Find<Button>("PlayButton").Effect=glow;
+            Effect glow=NeonGlow();smallTrace.Effect=glow;expandedTrace.Effect=glow;expandedGlow.Effect=glow;audioScene.Effect=glow;Find<Canvas>("MainSpectrum").Effect=glow;Find<Grid>("RecordDisc").Effect=glow;Find<Slider>("Seek").Effect=glow;Find<Slider>("Volume").Effect=glow;Find<Button>("PlayButton").Effect=glow;
             foreach(string name in new[]{"AmbientRing","AmbientOrbit","AmbientBand","AmbientDots","AmbientShard","AmbientSteps"})Find<FrameworkElement>(name).Effect=glow;if(themeGeometry!=null)themeGeometry.Effect=glow;
             foreach(string name in new[]{"LibraryButton","FavoritesButton","DownloadsButton","PlaylistsButton","VisualizerButton","MainSpectrumButton","MainVisualizerOffButton"}){var button=Find<Button>(name);var brush=button.BorderBrush as SolidColorBrush;button.Effect=Data.NeonEnabled&&brush!=null&&brush.Color.A>0?glow:null;}
         }

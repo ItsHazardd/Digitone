@@ -4,6 +4,8 @@ Digitone is a local-first Windows music player with animated themes, playlists, 
 
 Built by GEMMA in conjunction with Hazzy: 70% GEMMA, 30% Hazzy.
 
+Current release: 3.0.30 for Windows x64.
+
 ## Privacy
 
 Digitone stores its library and settings beside the application. The repository and release packages never include a user's music, library database, lyrics, artwork, playlists, or personal folders.

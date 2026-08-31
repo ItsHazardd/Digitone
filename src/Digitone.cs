@@ -18,8 +18,9 @@ using Forms = System.Windows.Forms;
 
 namespace Digitone
 {
-    public sealed class Track
+    public sealed class Track : System.ComponentModel.INotifyPropertyChanged
     {
+        private bool isPlaying;
         public string Path { get; set; }
         public bool Favorite { get; set; }
         public string SongTitle { get; set; }
@@ -33,6 +34,9 @@ namespace Digitone
         public string Comment { get; set; }
         public string CoverData { get; set; }
         public string Lyrics { get; set; }
+        [ScriptIgnore]
+        public bool IsPlaying { get { return isPlaying; } set { if(isPlaying==value)return;isPlaying=value;var changed=PropertyChanged;if(changed!=null)changed(this,new System.ComponentModel.PropertyChangedEventArgs("IsPlaying")); } }
+        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
         public string Title { get { return CleanTitle(String.IsNullOrWhiteSpace(SongTitle) ? System.IO.Path.GetFileNameWithoutExtension(Path) : SongTitle); } }
         public static string CleanTitle(string title) { return System.Text.RegularExpressions.Regex.Replace(title ?? "", @"\s+\[[A-Za-z0-9_-]{11}\]$", ""); }
         public string Detail { get { return !String.IsNullOrWhiteSpace(Artist) ? Artist + (String.IsNullOrWhiteSpace(Album) ? "" : " · " + Album) : new DirectoryInfo(System.IO.Path.GetDirectoryName(Path)).Name; } }
@@ -230,7 +234,8 @@ namespace Digitone
         private Brush dim = new SolidColorBrush(Color.FromRgb(67, 82, 66));
         private Playlist selectedPlaylist;
         private bool favorites, playlistsView, playing, ready, opening, updatingSeek, shuffle, importing, closed, seekWasPlaying;
-        private int repeat, queueIndex = -1, waveVersion;
+        private int repeat, queueIndex = -1, waveVersion, endHandledVersion = -1, nearEndStallTicks;
+        private double lastPlaybackPosition = -1;
         private Track current;
         private Point trackDragStart;
         private ListBoxItem playlistDropItem;
@@ -329,12 +334,12 @@ namespace Digitone
             Window.DragOver += delegate(object sender, DragEventArgs e) { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
             Window.Drop += delegate(object sender, DragEventArgs e) { if (e.Data.GetDataPresent(DataFormats.FileDrop)) { var ignored = Import((string[])e.Data.GetData(DataFormats.FileDrop)); } };
             Window.PreviewKeyDown += delegate(object sender, KeyEventArgs e) { if (e.Key == Key.Space && !(Keyboard.FocusedElement is TextBox) && !(Keyboard.FocusedElement is Button) && !(Keyboard.FocusedElement is Slider)) { TogglePlay(); e.Handled = true; } };
-            media.MediaEnded += delegate { if (repeat == 2) { media.Position = TimeSpan.Zero; media.Play(); } else Next(true); };
-            media.MediaFailed += delegate(Exception e) { opening = false; ready = false; playing = false; media.Close(); UpdatePlayButton(); Status("Cannot play this file. It may be missing, damaged, or unsupported by your Windows codecs. Try another track."); };
+            media.MediaEnded += delegate { int endedVersion=waveVersion;Window.Dispatcher.BeginInvoke(new Action(delegate{HandleNaturalEnd(endedVersion);})); };
+            media.MediaFailed += delegate(Exception e) { int failedVersion=waveVersion;Window.Dispatcher.BeginInvoke(new Action(delegate{if(closed||failedVersion!=waveVersion)return;opening=false;ready=false;playing=false;media.Close();UpdatePlayButton();Status("Cannot play this file. It may be missing, damaged, or unsupported by your Windows codecs.");AdvancePastUnavailable(failedVersion);})); };
             Find<Canvas>("Waveform").SizeChanged += delegate { LayoutWave(); };
             Window.SizeChanged += delegate(object sender, SizeChangedEventArgs e) { ApplyCompactLayout(e.NewSize.Height, e.NewSize.Width); };
             SetupWaveRendering();
-            timer.Tick += delegate { ((RotateTransform)Find<System.Windows.Shapes.Ellipse>("AmbientOrbit").RenderTransform).Angle-=.28; UpdateLyricsDisplay(); if (!ready) return; updatingSeek = true; Find<Slider>("Seek").Value = media.Position.TotalSeconds; updatingSeek = false; Text("Elapsed", FormatTime(media.Position.TotalSeconds)); };
+            timer.Tick += delegate { ((RotateTransform)Find<System.Windows.Shapes.Ellipse>("AmbientOrbit").RenderTransform).Angle-=.28; UpdateLyricsDisplay(); if (!ready) { nearEndStallTicks=0;lastPlaybackPosition=-1;return; } double position=media.Position.TotalSeconds;updatingSeek = true; Find<Slider>("Seek").Value = position; updatingSeek = false; Text("Elapsed", FormatTime(position));CheckEndWatchdog(position); };
             Window.Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e) { if (Downloads.Busy) { e.Cancel = true; ShowDownloads(true); if (MessageBox.Show(Window, "Cancel the active download? After it stops, you can close Digitone.", "Download in progress", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) Downloads.Cancel(); return; } if (importing) { e.Cancel = true; Status("Finishing this import. Please close Digitone again in a moment."); return; } if (!Save()) { if (MessageBox.Show(Window, "The library could not be saved. Close and lose unsaved changes?", "Close Digitone?", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) e.Cancel = true; } };
             Window.Closed += delegate { closed = true; waveVersion++; if (liveWave != null) liveWave.Dispose(); timer.Stop(); seekResumeTimer.Stop(); media.Close(); };
             RefreshPlaylists(); RefreshTracks(); UpdateTransport(); timer.Start();
@@ -348,6 +353,20 @@ namespace Digitone
             var item=TrackItemAt(source);return item==null?null:item.DataContext as Track;
         }
         private static ListBoxItem TrackItemAt(DependencyObject source){while(source!=null&&!(source is ListBoxItem))source=source is Visual?VisualTreeHelper.GetParent(source):null;return source as ListBoxItem;}
+        private void CheckEndWatchdog(double position)
+        {
+            if(!playing||opening||media.Duration.TotalSeconds<=0){nearEndStallTicks=0;lastPlaybackPosition=position;return;}
+            double remaining=media.Duration.TotalSeconds-position;
+            if(remaining<=.18&&Math.Abs(position-lastPlaybackPosition)<.004)nearEndStallTicks++;else nearEndStallTicks=0;
+            lastPlaybackPosition=position;
+            if(nearEndStallTicks>=4)HandleNaturalEnd(waveVersion);
+        }
+        private void HandleNaturalEnd(int endedVersion)
+        {
+            if(closed||endedVersion!=waveVersion||endHandledVersion==endedVersion)return;
+            endHandledVersion=endedVersion;nearEndStallTicks=0;
+            if(repeat==2){media.Position=TimeSpan.Zero;media.Play();endHandledVersion=-1;lastPlaybackPosition=0;}else Next(true);
+        }
         private void ClearPlaylistDrop(){if(playlistDropItem==null)return;playlistDropItem.BorderBrush=Brushes.Transparent;playlistDropItem.BorderThickness=new Thickness(0);playlistDropItem.Effect=null;playlistDropItem=null;}
         private void ShowPlaylistDrop(ListBoxItem item,bool after){if(playlistDropItem!=item)ClearPlaylistDrop();playlistDropItem=item;if(item==null)return;item.BorderBrush=accent;item.BorderThickness=after?new Thickness(0,0,0,3):new Thickness(0,3,0,0);item.Effect=NeonGlow();}
         internal void ApplyCompactLayout(double height, double width = 0)
@@ -368,7 +387,8 @@ namespace Digitone
             Find<Canvas>("Waveform").Height = compact ? 40 : 58;
             Find<Canvas>("MainSpectrum").Height = Data.MainVisualizerMode=="Spectrum" ? (compact?52:72) : (compact?40:58);
             Find<Viewbox>("DefaultArt").MaxHeight = Double.PositiveInfinity;
-            Find<Border>("RecordArt").MinHeight = Data.MainVisualizerMode=="Spectrum" ? (compact?150:190) : 90;
+            Find<Viewbox>("DefaultArt").MaxWidth = Double.PositiveInfinity;
+            Find<Border>("RecordArt").MinHeight = 0;
             foreach(string name in new[]{"LibraryButton","FavoritesButton","DownloadsButton","PlaylistsButton"}){ var button=Find<Button>(name); button.FontSize=width<1250?12:17; button.Padding=width<1250?new Thickness(8,8,8,8):new Thickness(12,10,12,10); }
         }
         private void Menu(ContextMenu menu, string label, Action action) { menu.Style = (Style)Window.FindResource(typeof(ContextMenu)); var item = new MenuItem { Header = label, Style = (Style)Window.FindResource(typeof(MenuItem)) }; item.Click += delegate { action(); }; menu.Items.Add(item); }
@@ -646,7 +666,7 @@ namespace Digitone
         internal void PlayAt(int index)
         {
             if (index < 0 || index >= queue.Count) return;
-            opening = false; media.Close(); ready = false; playing = false; queueIndex = index; current = queue[index]; waveVersion++; if (liveWave != null) liveWave.Dispose();
+            if(current!=null)current.IsPlaying=false;opening = false; media.Close(); ready = false; playing = false; queueIndex = index; current = queue[index];current.IsPlaying=true; waveVersion++;endHandledVersion=-1;nearEndStallTicks=0;lastPlaybackPosition=-1; if (liveWave != null) liveWave.Dispose();
             Text("NowTitle", current.Title); Text("NowDetail", current.Detail + " · " + current.Format); Text("PlayerTitle", current.Title); Text("PlayerDetail", current.Detail); Text("Elapsed", "0:00"); Text("Duration", "0:00");
             AutoFindLyrics(current);
             UpdateCover();
@@ -654,7 +674,7 @@ namespace Digitone
             if (SystemParameters.ClientAreaAnimation) Find<TextBlock>("NowTitle").BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(240)));
             updatingSeek = true; Find<Slider>("Seek").Value = 0; Find<Slider>("Seek").Maximum = 1; updatingSeek = false;
              ResetLiveWave(); Text("WaveLabel", "Preparing waveform…"); RefreshQueue(); UpdatePlayButton();
-            if (!LocalFiles.IsLocal(current.Path) || !File.Exists(current.Path)) { Status("This local file is unavailable. Reconnect its drive or add it again from its new location."); return; }
+            if (!LocalFiles.IsLocal(current.Path) || !File.Exists(current.Path)) { Status("This queued file is unavailable. Skipping it when another song is queued.");AdvancePastUnavailable(waveVersion); return; }
             try { opening = true; playing = true; string openingPath=current.Path; int openingVersion=waveVersion; UpdatePlayButton(); Status("Opening local audio…"); Window.Dispatcher.BeginInvoke(new Action(delegate{if(closed||openingVersion!=waveVersion)return;OpenCurrentAudio(openingPath,openingVersion,0,true);})); var ignored = LoadWave(current.Path, waveVersion); }
             catch (Exception e) { opening = false; playing = false; UpdatePlayButton(); Status("Unable to open this track: " + e.Message); }
         }
@@ -689,6 +709,11 @@ namespace Digitone
             if (shuffle && next < queue.Count - 1) { int pick = random.Next(next, queue.Count); Track temp = queue[next]; queue[next] = queue[pick]; queue[pick] = temp; }
             PlayAt(next);
         }
+        private void AdvancePastUnavailable(int failedVersion)
+        {
+            if(failedVersion!=waveVersion||queueIndex+1>=queue.Count)return;
+            Window.Dispatcher.BeginInvoke(new Action(delegate{if(!closed&&failedVersion==waveVersion)PlayAt(queueIndex+1);}),DispatcherPriority.Background);
+        }
         private void RefreshQueue() { Find<ListBox>("Queue").ItemsSource = queue.Skip(queueIndex + 1).ToList(); Text("QueueCount", Math.Max(0, queue.Count - queueIndex - 1) + " tracks"); }
         private void UpdatePlayButton() { UpdateTransport(); Find<Button>("PlayButton").Content = playing ? "Ⅱ" : "▶"; UpdateRecordSpin(); if (!playing) UpdateLiveWave(); }
         private void UpdateCover()
@@ -719,7 +744,7 @@ namespace Digitone
                 if (ready && version == waveVersion && !closed) {media.Position = TimeSpan.FromSeconds(position);if(!resume){playing=false;media.Pause();UpdatePlayButton();}}
             }
         }
-        private void StopAndClear() { if (liveWave != null) liveWave.Dispose(); opening = false; media.Close(); ready = false; playing = false; current = null; queue.Clear(); queueIndex = -1; waveVersion++;  UpdateCover(); ResetLiveWave(); UpdatePlayButton(); RefreshQueue(); Text("NowTitle", "Find your quiet."); Text("NowDetail", "Choose something worth listening to."); Text("PlayerTitle", "Nothing playing. Yet."); Text("Elapsed", "0:00"); Text("Duration", "0:00"); updatingSeek = true; Find<Slider>("Seek").Value = 0; updatingSeek = false; }
+        private void StopAndClear() { if(current!=null)current.IsPlaying=false;if (liveWave != null) liveWave.Dispose(); opening = false; media.Close(); ready = false; playing = false; current = null; queue.Clear(); queueIndex = -1; waveVersion++;  UpdateCover(); ResetLiveWave(); UpdatePlayButton(); RefreshQueue(); Text("NowTitle", "Find your quiet."); Text("NowDetail", "Choose something worth listening to."); Text("PlayerTitle", "Nothing playing. Yet."); Text("Elapsed", "0:00"); Text("Duration", "0:00"); updatingSeek = true; Find<Slider>("Seek").Value = 0; updatingSeek = false; }
         private static string FormatTime(double seconds) { return TimeSpan.FromSeconds(Math.Max(0, seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss"); }
         private Window Dialog(string title, int width, int height) { return new Window { Owner = Window, Title = title, Width = width, Height = height, Background = Window.Background, Foreground = Window.Foreground, FontFamily = Window.FontFamily, WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize, Resources = Window.Resources }; }
         private static StackPanel DialogPanel(Window dialog, string description) { var panel = new StackPanel { Margin = new Thickness(25) }; panel.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, FontSize = 14 }); dialog.Content = panel; return panel; }

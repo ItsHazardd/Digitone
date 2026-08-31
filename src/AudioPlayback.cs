@@ -83,7 +83,7 @@ namespace Digitone
         }
         internal void Play(){if(output!=null)output.Play();}
         internal void Pause(){if(output!=null)output.Pause();}
-        private void Stopped(object sender,StoppedEventArgs e){if(suppressStop)return;if(e.Exception!=null){var failed=MediaFailed;if(failed!=null)failed(e.Exception);return;}if(reader!=null&&reader.Position>=reader.Length){var ended=MediaEnded;if(ended!=null)ended(this,EventArgs.Empty);}}
+        private void Stopped(object sender,StoppedEventArgs e){if(suppressStop)return;if(e.Exception!=null){var failed=MediaFailed;if(failed!=null)failed(e.Exception);return;}if(reader!=null&&(reader.Position>=reader.Length||reader.TotalTime-reader.CurrentTime<=TimeSpan.FromMilliseconds(350))){var ended=MediaEnded;if(ended!=null)ended(this,EventArgs.Empty);}}
         internal void Close(){suppressStop=true;try{if(output!=null){output.PlaybackStopped-=Stopped;output.Stop();output.Dispose();}}finally{output=null;if(reader!=null)reader.Dispose();if(selectedDevice!=null)selectedDevice.Dispose();selectedDevice=null;reader=null;volume=null;equalizer=null;suppressStop=false;}}
         public void Dispose(){Close();}
     }

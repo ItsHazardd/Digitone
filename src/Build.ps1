@@ -36,6 +36,7 @@ if (!$Release) { $arguments += Join-Path $PSScriptRoot 'CoverBrowserTest.cs' }
 $arguments += '/win32icon:' + $IconPath
 $arguments += '/resource:' + $IconPath + ',Digitone.ico'
 $arguments += '/resource:' + (Join-Path $PSScriptRoot 'DigitoneMark.png') + ',DigitoneMark.png'
+$arguments += '/resource:' + (Join-Path $PSScriptRoot 'SanctuaryPlant.png') + ',SanctuaryPlant.png'
 $arguments += '/resource:' + (Join-Path $PSScriptRoot 'CoverIntegration.js') + ',CoverIntegration.js'
 $arguments += '/reference:' + (Join-Path $PSScriptRoot 'Microsoft.Web.WebView2.Core.dll')
 $arguments += '/reference:' + (Join-Path $PSScriptRoot 'Microsoft.Web.WebView2.Wpf.dll')

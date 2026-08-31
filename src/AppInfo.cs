@@ -3,9 +3,9 @@ namespace Digitone
     internal static class AppInfo
     {
         // Release.Batch.Day — update this single value after each completed batch.
-        internal const string Version = "2.11.30";
+        internal const string Version = "3.0.30";
         internal const string Changelog =
-@"VERSION 2 · CURRENT CHANGES
+@"VERSION 3 · CURRENT RELEASE
 
 LIBRARY AND PLAYLISTS
 • Restored the Add to playlist submenu in the song right-click menu for single and Ctrl/Shift selections.
@@ -15,6 +15,7 @@ PLAYBACK AND SOUND
 • Removed experimental record scratching and restored the normal playback path; ordinary record rotation remains unchanged.
 • Made UI playback startup deterministic so the selected song reliably reaches the audio engine.
 • Added a persistent Audio Output selector with Windows-default fallback for disconnected devices.
+• Made natural song endings advance on the UI thread, tolerate near-end decoder positions, and skip unavailable queued files.
 
 ACCESSIBILITY
 • Rebuilt the changelog as a version browser with retained release history.
@@ -27,7 +28,34 @@ ACCESSIBILITY
 APPEARANCE
 • Removed minimize and maximize controls from secondary Digitone windows.
 • Gave Custom Color dark surfaces more of the selected color without changing preset themes.
-• Made playlist names scale down automatically to fit their cards.";
+• Made playlist names scale down automatically to fit their cards.
+• Highlighted the currently playing library row with the active theme accent.
+• Added Tree House Sanctuary with lo-fi typography, animated greenery, light-mode sun, dark-mode stars, and one user-supplied hanging plant processed without generative media.
+• Separated the playing-song accent from the quieter multi-selection state.
+• Made theme cards horizontally scroll at a fixed size, preserving artwork proportions and complete labels.
+• Protected Sanctuary artwork proportions, fitted its header branding, and connected its stars to Neon mode.
+• Extended optional Neon glow to the fullscreen visualizers without changing their modes or playback path.
+• Restored fluid aspect-ratio record sizing inside a dedicated layout row so it never overlaps song information.
+• Kept Sanctuary greenery visible across landscape and portrait layouts while preserving scene proportions.
+
+UPDATES
+• Removed release-note spoilers from automatic update prompts; full details remain in the Changelog menu.
+• Added a guarded near-end playback fallback so a missed decoder event advances once without double-skipping.";
+
+        internal const string Release2Changelog =
+@"VERSION 2 · RELEASE HISTORY
+
+PLAYBACK AND SOUND
+• Added persistent volume, multimedia-key support, queue cycling, audio-output selection, and a real five-band equalizer.
+• Added smooth main and fullscreen visualizers with Waveform, Spectrum, Radial, Prism, and three-band Pulse modes.
+
+LIBRARY AND PLAYLISTS
+• Added editable metadata, batch artwork, saved lyrics, synchronized folder playlists, drag ordering, and queue management.
+• Added a separate customizable playlist grid and explicit quick-access favorites.
+
+APPEARANCE AND DELIVERY
+• Added responsive portrait and landscape layouts, preset themes, Custom Color, Light/Dark surfaces, and optional Neon accents.
+• Added clean portable Windows packaging, first-run setup, dependency tools, versioned changelogs, and verified automatic updates.";
 
         internal const string Release1Changelog =
 @"VERSION 1 · RELEASE HISTORY
@@ -58,7 +86,7 @@ APPEARANCE AND SETUP
 • Added an optional persistent Neon mode for controls, visualizers, and moving theme accents.
 • Added the Spectrum visualizer while keeping the turntable prominent.
 • Added first-run folder setup, dependency updates, GEMMA and Hazzy credits, centralized versioning, and this changelog.";
-        internal static readonly string[] ChangelogVersions = { "Version 2 · Current", "Version 1 · Release history" };
-        internal static readonly string[] Changelogs = { Changelog, Release1Changelog };
+        internal static readonly string[] ChangelogVersions = { "Version 3 · Current release", "Version 2 · Release history", "Version 1 · Release history" };
+        internal static readonly string[] Changelogs = { Changelog, Release2Changelog, Release1Changelog };
     }
 }

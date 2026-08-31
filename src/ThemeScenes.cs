@@ -1,15 +1,18 @@
 using System;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 
 namespace Digitone
 {
-    // Original vector scenes. No game artwork or image assets are bundled.
+    // Original vector scenes plus the user-supplied, deterministically processed sanctuary plant.
     internal static class ThemeScenes
     {
+        private static ImageSource sanctuaryPlant;
         internal delegate void Animate(IAnimatable target,DependencyProperty property,double from,double to,double seconds);
         private static Brush Ink(string hex) { var b=new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)); b.Freeze(); return b; }
         private static T Place<T>(Canvas c,T item,double x,double y) where T:FrameworkElement { Canvas.SetLeft(item,x); Canvas.SetTop(item,y); c.Children.Add(item); return item; }
@@ -19,6 +22,14 @@ namespace Digitone
         {
             var t=new TranslateTransform(); e.RenderTransform=t;
             if(animate!=null) { if(dx!=0) animate(t,TranslateTransform.XProperty,-dx,dx,seconds); if(dy!=0) animate(t,TranslateTransform.YProperty,-dy,dy,seconds+2); }
+        }
+        private static ImageSource SanctuaryPlant()
+        {
+            if(sanctuaryPlant!=null)return sanctuaryPlant;
+            using(System.IO.Stream stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("SanctuaryPlant.png"))
+            {
+                if(stream==null)return null;var image=new BitmapImage();image.BeginInit();image.CacheOption=BitmapCacheOption.OnLoad;image.StreamSource=stream;image.EndInit();image.Freeze();sanctuaryPlant=image;return image;
+            }
         }
         private static Canvas Block()
         {
@@ -46,10 +57,32 @@ namespace Digitone
             Place(c,new TextBlock { Text=(index+1).ToString(),FontFamily=new FontFamily("Georgia"),FontSize=19,Foreground=Ink("#FFF1CC") },0,-7);
             c.RenderTransform=new RotateTransform((index-1)*15,62,184); return c;
         }
-        internal static Canvas Build(string theme,double height,Animate animate=null)
+        internal static Canvas Build(string theme,double height,Animate animate=null,bool light=false,bool includePlant=false,bool neon=false)
         {
             var c=new Canvas { Width=1000,Height=height,ClipToBounds=true };
-            if(theme=="Overworld")
+            if(theme=="Sanctuary")
+            {
+                Box(c,0,0,1000,height,light?"#BFE5BA":"#102B29");
+                if(light)
+                {
+                    var sun=Place(c,new Ellipse{Name="SanctuarySun",Width=138,Height=138,Fill=Ink("#F4D77E"),Opacity=.92},80,42);Drift(sun,animate,5,8,10);
+                    var haze=new Canvas{Opacity=.28};c.Children.Add(haze);for(int i=0;i<4;i++)Place(haze,new Ellipse{Width=240-i*25,Height=62,Fill=Ink("#F1F1D0")},70+i*250,125+(i%2)*52);Drift(haze,animate,34,0,24);
+                }
+                else
+                {
+                    var moon=Place(c,new Ellipse{Width=105,Height=105,Fill=Ink("#D7E7C0"),Opacity=.9},105,58);Place(c,new Ellipse{Width=92,Height=92,Fill=Ink("#102B29")},139,45);Drift(moon,animate,4,7,11);
+                    var stars=new Canvas{Name="SanctuaryStars"};if(neon)stars.Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#B8F39A"),BlurRadius=13,ShadowDepth=0,Opacity=.9,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance};c.Children.Add(stars);for(int i=0;i<26;i++){double size=2+(i%4);Place(stars,new Ellipse{Width=size,Height=size,Fill=Ink(i%5==0?"#C9B8FF":"#D6ECCB"),Opacity=.45+(i%3)*.18},25+(i*83)%950,24+(i*67)%Math.Max(180,height*.62));}Drift(stars,animate,6,-12,16);
+                }
+                Shape(c,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M0,{0} Q170,{1} 340,{0} T680,{2} T1000,{0} L1000,{3} L0,{3} Z",height*.68,height*.51,height*.58,height),light?"#598F54":"#214E3B",null);
+                var shrubs=new Canvas{Name="SanctuaryShrubs"};c.Children.Add(shrubs);for(int i=0;i<18;i++){double radius=90+(i%4)*24,x=-35+i*62,y=height-radius*.95-(i%3)*18;Place(shrubs,new Ellipse{Width=radius,Height=radius*.68,Fill=Ink(i%3==0?(light?"#4F8D4B":"#1C5B3D"):i%3==1?(light?"#6AA75C":"#28704A"):(light?"#3F7747":"#174A38")),Stroke=Ink(light?"#356D3A":"#2B7D55"),StrokeThickness=1.2},x,y);}
+                var vines=new Canvas{Opacity=.76};c.Children.Add(vines);for(int i=0;i<5;i++){double x=18+i*220;var vine=Shape(vines,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M{0},0 C{1},{2} {3},{4} {5},{6}",x,x+65,height*.18,x-45,height*.42,x+32,height*.72),null,light?"#397840":"#3B8D5A",3);for(int j=0;j<4;j++){var leaf=Place(vines,new Ellipse{Width=20,Height=10,Fill=Ink(j%2==0?(light?"#69A954":"#4D9B61"):(light?"#4B8D49":"#337C52"))},x+((j%2==0)?18:-7),70+j*height*.13);leaf.RenderTransform=new RotateTransform(j%2==0?28:-28,10,5);}}Drift(vines,animate,8,12,13);
+                var fireflies=new Canvas();c.Children.Add(fireflies);for(int i=0;i<11;i++)Place(fireflies,new Ellipse{Width=5+i%3,Height=5+i%3,Fill=Ink(light?"#F3DD8D":"#B8F39A"),Opacity=.42+(i%4)*.12},65+i*86,170+(i*79)%Math.Max(200,height-260));Drift(fireflies,animate,16,-24,9);
+                if(includePlant)
+                {
+                    var source=SanctuaryPlant();if(source!=null){var plant=new Image{Name="SanctuaryPlant",Source=source,Width=150,Height=150,Stretch=Stretch.Uniform,RenderTransformOrigin=new Point(.5,.05),Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString(light?"#55764A":"#83D59A"),BlurRadius=12,ShadowDepth=2,Opacity=.55}};var transforms=new TransformGroup();var sway=new RotateTransform();var floatMove=new TranslateTransform();transforms.Children.Add(sway);transforms.Children.Add(floatMove);plant.RenderTransform=transforms;Place(c,plant,760,5);if(animate!=null){animate(sway,RotateTransform.AngleProperty,-1.8,1.8,5.5);animate(floatMove,TranslateTransform.YProperty,-5,5,4.5);}}
+                }
+            }
+            else if(theme=="Overworld")
             {
                 for(int i=0;i<3;i++) { var block=Place(c,Block(),i==0?15:i==1?820:650,i==0?height*.42:i==1?height*.1:height*.8); block.Opacity=.9; Drift(block,animate,0,8+i*2,5+i); }
                 var clouds=new Canvas(); c.Children.Add(clouds);
