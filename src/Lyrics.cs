@@ -130,7 +130,7 @@ namespace Digitone
         }
         internal Window CreateLyrics(Track track,bool uploadImmediately=false)
         {
-            var dialog=new Window { Owner=Window, Title="Lyrics · Digitone", Width=680,Height=730,MinWidth=460,MinHeight=480,Resources=Window.Resources,FontFamily=Window.FontFamily,Icon=Window.Icon,WindowStartupLocation=WindowStartupLocation.CenterOwner };
+            var dialog=new Window { Owner=Window, Title="Lyrics · Digitone", Width=680,Height=730,MinWidth=460,MinHeight=480,ResizeMode=ResizeMode.NoResize,Resources=Window.Resources,FontFamily=Window.FontFamily,Icon=Window.Icon,WindowStartupLocation=WindowStartupLocation.CenterOwner };
             dialog.SetResourceReference(Control.BackgroundProperty,"B161917"); dialog.SetResourceReference(Control.ForegroundProperty,"BEEEFE8");
             var root=new DockPanel { Margin=new Thickness(26) }; dialog.Content=root;
             var header=new StackPanel(); DockPanel.SetDock(header,Dock.Top); root.Children.Add(header);

@@ -24,7 +24,7 @@ namespace Digitone
         {
             this.artist = artist;
             this.browserData = browserData;
-            Owner = owner; Title = "Cover search · Digitone"; Width = 1080; Height = 780; MinWidth = 740; MinHeight = 540; Resources = owner.Resources; Background = owner.Background; Foreground = owner.Foreground; FontFamily = owner.FontFamily; Icon = owner.Icon; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            Owner = owner; Title = "Cover search · Digitone"; Width = 1080; Height = 780; MinWidth = 740; MinHeight = 540; ResizeMode = ResizeMode.NoResize; Resources = owner.Resources; Background = owner.Background; Foreground = owner.Foreground; FontFamily = owner.FontFamily; Icon = owner.Icon; WindowStartupLocation = WindowStartupLocation.CenterOwner;
             var root = new DockPanel { Background = owner.Background }; Content = root;
             var footer = new DockPanel { Margin = new Thickness(18,12,18,12) }; DockPanel.SetDock(footer,Dock.Bottom); root.Children.Add(footer);
             DockPanel.SetDock(UseButton,Dock.Right); footer.Children.Add(UseButton); var close = new Button { Content = "Close", IsCancel = true }; DockPanel.SetDock(close,Dock.Right); footer.Children.Add(close); footer.Children.Add(preview); footer.Children.Add(status); root.Children.Add(Browser);

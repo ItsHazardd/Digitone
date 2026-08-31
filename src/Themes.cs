@@ -31,8 +31,8 @@ namespace Digitone
                 if (luminance > 210) return Blend(Colors.White, seed, .06);
                 if (luminance > 175) { while (.2126*seed.R + .7152*seed.G + .0722*seed.B < 180) seed = Blend(seed, Colors.White, .15); return seed; }
                 if (luminance > 120) return Blend(Color.FromRgb(180,180,180),seed,.15);
-                if (color == (Color)ColorConverter.ConvertFromString("#354233")) return Blend(Color.FromRgb(24,24,24),seed,.22);
-                byte dark = (byte)(luminance*.6); return Blend(Color.FromRgb(dark,dark,dark),seed,.035);
+                if (color == (Color)ColorConverter.ConvertFromString("#354233")) return Blend(Color.FromRgb(20,20,20),seed,.42);
+                byte dark = (byte)(luminance*.52); return Blend(Color.FromRgb(dark,dark,dark),seed,.16);
             }
             if (theme == "Midnight")
             {

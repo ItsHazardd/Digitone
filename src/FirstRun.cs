@@ -10,7 +10,7 @@ namespace Digitone
     {
         internal Window CreateFirstRun()
         {
-            var dialog=new Window { Owner=Window,Title="Welcome to Digitone",Width=650,Height=650,MinWidth=540,MinHeight=550,Resources=Window.Resources,Background=Window.Background,Foreground=Window.Foreground,FontFamily=Window.FontFamily,Icon=Window.Icon,WindowStartupLocation=WindowStartupLocation.CenterOwner };
+            var dialog=new Window { Owner=Window,Title="Welcome to Digitone",Width=650,Height=650,MinWidth=540,MinHeight=550,ResizeMode=ResizeMode.NoResize,Resources=Window.Resources,Background=Window.Background,Foreground=Window.Foreground,FontFamily=Window.FontFamily,Icon=Window.Icon,WindowStartupLocation=WindowStartupLocation.CenterOwner };
             var dock=new DockPanel { Margin=new Thickness(30),Background=Window.Background }; dialog.Content=dock;
             var finish=new Button { Name="FinishSetup",Content="Start listening",HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,18,6,8),Padding=new Thickness(18,10,18,10) }; DockPanel.SetDock(finish,Dock.Bottom); dock.Children.Add(finish);
             var body=new StackPanel(); dock.Children.Add(new ScrollViewer { Content=body,VerticalScrollBarVisibility=ScrollBarVisibility.Auto });

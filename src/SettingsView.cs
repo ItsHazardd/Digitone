@@ -39,7 +39,7 @@ namespace Digitone
         }
         internal Window CreateSettings()
         {
-            var dialog = new Window { Owner = Window, Title = "Settings · Digitone", Width = 860, Height = 700, MinWidth = 740, MinHeight = 540, WindowStartupLocation = WindowStartupLocation.CenterOwner, Resources = Window.Resources, FontFamily = Window.FontFamily, Icon = Window.Icon, UseLayoutRounding = true };
+            var dialog = new Window { Owner = Window, Title = "Settings · Digitone", Width = 860, Height = 700, MinWidth = 740, MinHeight = 540, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Resources = Window.Resources, FontFamily = Window.FontFamily, Icon = Window.Icon, UseLayoutRounding = true };
             dialog.SetResourceReference(Control.BackgroundProperty, "B161917"); dialog.SetResourceReference(Control.ForegroundProperty, "BEEEFE8");
             var root = new Grid(); root.SetResourceReference(Panel.BackgroundProperty, "B161917"); dialog.Content = root;
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(185) }); root.ColumnDefinitions.Add(new ColumnDefinition());
@@ -132,7 +132,7 @@ namespace Digitone
         }
         private void ShowChangelog(Window owner)
         {
-            var dialog=new Window{Owner=owner,Title="Digitone · Changelog",Width=760,Height=620,MinWidth=620,MinHeight=420,WindowStartupLocation=WindowStartupLocation.CenterOwner,Resources=Window.Resources,FontFamily=Window.FontFamily,Icon=Window.Icon,UseLayoutRounding=true};
+            var dialog=new Window{Owner=owner,Title="Digitone · Changelog",Width=760,Height=620,MinWidth=620,MinHeight=420,ResizeMode=ResizeMode.NoResize,WindowStartupLocation=WindowStartupLocation.CenterOwner,Resources=Window.Resources,FontFamily=Window.FontFamily,Icon=Window.Icon,UseLayoutRounding=true};
             dialog.SetResourceReference(Control.BackgroundProperty,"B161917");dialog.SetResourceReference(Control.ForegroundProperty,"BEEEFE8");
             var root=new Grid{Margin=new Thickness(28)};root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});root.RowDefinitions.Add(new RowDefinition());root.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});dialog.Content=root;
             var heading=SettingsText("CHANGELOG ARCHIVE",28);heading.Margin=new Thickness(0,0,0,18);root.Children.Add(heading);

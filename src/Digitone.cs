@@ -215,7 +215,6 @@ namespace Digitone
     }
     public sealed partial class PlayerApp
     {
-        internal const string StartupGreeting = "Howdy Krazy";
         internal readonly Window Window;
         internal readonly Library Data;
         private readonly LibraryStore store;
@@ -466,7 +465,7 @@ namespace Digitone
             var straightCard=(ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'><Border x:Name='PlaylistCardSurface' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border></ControlTemplate>");
             foreach(Playlist playlist in Data.Playlists.OrderBy(p=>p.Name,StringComparer.CurrentCultureIgnoreCase))
             {
-                var stack=new StackPanel();var art=new Grid{Width=164,Height=164,Background=dim};var image=new Image{Source=SongTags.ImageFromData(playlist.CoverData),Stretch=Stretch.UniformToFill};art.Children.Add(image);if(image.Source==null)art.Children.Add(new TextBlock{Text=(playlist.Name??"?").Substring(0,1).ToUpperInvariant(),FontFamily=(FontFamily)Window.Resources["ThemeDisplayFont"],FontSize=62,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Foreground=accent});stack.Children.Add(art);stack.Children.Add(new TextBlock{Text=playlist.Name,FontSize=16,FontWeight=FontWeights.SemiBold,Margin=new Thickness(0,10,0,2),TextTrimming=TextTrimming.CharacterEllipsis});stack.Children.Add(new TextBlock{Text=playlist.Paths.Count+" tracks",Foreground=(Brush)Window.FindResource("B919A92"),FontSize=10});
+                var stack=new StackPanel();var art=new Grid{Width=164,Height=164,Background=dim};var image=new Image{Source=SongTags.ImageFromData(playlist.CoverData),Stretch=Stretch.UniformToFill};art.Children.Add(image);if(image.Source==null)art.Children.Add(new TextBlock{Text=(playlist.Name??"?").Substring(0,1).ToUpperInvariant(),FontFamily=(FontFamily)Window.Resources["ThemeDisplayFont"],FontSize=62,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Foreground=accent});stack.Children.Add(art);var title=new TextBlock{Text=playlist.Name,FontSize=16,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.None,TextWrapping=TextWrapping.NoWrap};stack.Children.Add(new Viewbox{Name="PlaylistTitleFit",Width=164,Height=30,Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,8,0,2),Child=title});stack.Children.Add(new TextBlock{Text=playlist.Paths.Count+" tracks",Foreground=(Brush)Window.FindResource("B919A92"),FontSize=10});
                 var card=new Button{Content=stack,Tag=playlist,Template=straightCard,Width=196,Height=252,Padding=new Thickness(14),Margin=new Thickness(0,0,16,16),HorizontalContentAlignment=HorizontalAlignment.Left,VerticalContentAlignment=VerticalAlignment.Top,Background=Themes.Brush(Window,"1C211D"),BorderBrush=Themes.Brush(Window,"354233")};card.Click+=delegate{SelectCollection(playlist,false);};
                 var menu=new ContextMenu();Menu(menu,"Change square cover…",delegate{ChangePlaylistCover(playlist);});Menu(menu,"Remove square cover",delegate{playlist.CoverData=null;Save();RefreshPlaylistGrid();});Menu(menu,playlist.Favorite?"Remove from quick access":"Add to quick access",delegate{playlist.Favorite=!playlist.Favorite;Save();RefreshPlaylists();RefreshPlaylistGrid();});Menu(menu,"Delete playlist…",delegate{selectedPlaylist=playlist;DeletePlaylist();});card.ContextMenu=menu;grid.Children.Add(card);
             }
@@ -724,12 +723,6 @@ namespace Digitone
         private static string FormatTime(double seconds) { return TimeSpan.FromSeconds(Math.Max(0, seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss"); }
         private Window Dialog(string title, int width, int height) { return new Window { Owner = Window, Title = title, Width = width, Height = height, Background = Window.Background, Foreground = Window.Foreground, FontFamily = Window.FontFamily, WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize, Resources = Window.Resources }; }
         private static StackPanel DialogPanel(Window dialog, string description) { var panel = new StackPanel { Margin = new Thickness(25) }; panel.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, FontSize = 14 }); dialog.Content = panel; return panel; }
-        internal void ShowKrazyGreeting()
-        {
-            var dialog=Dialog(StartupGreeting,380,190);var panel=DialogPanel(dialog,StartupGreeting);
-            var close=new Button{Content="Howdy!",IsDefault=true,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,24,0,0),Padding=new Thickness(18,8,18,8)};
-            close.Click+=delegate{dialog.DialogResult=true;};panel.Children.Add(close);dialog.Loaded+=delegate{close.Focus();};dialog.ShowDialog();
-        }
         private string Prompt(string title, string description, string initial)
         {
             var dialog = Dialog(title, 420, 270); var panel = DialogPanel(dialog, description);
@@ -767,7 +760,6 @@ namespace Digitone
                             if(player.CreateFirstRun().ShowDialog()!=true) { player.Window.Close(); return; }
                             if(!String.IsNullOrEmpty(player.Data.MainMusicFolder)) await player.Import(new[]{player.Data.MainMusicFolder});
                         }
-                        player.ShowKrazyGreeting();
                     };
                     app.Run(player.Window); return 0;
                 }

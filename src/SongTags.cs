@@ -150,7 +150,7 @@ namespace Digitone
         internal SongEditor(Window owner, Track track, Action releasePlayback)
         {
             this.track = track; this.releasePlayback = releasePlayback; status.Foreground = Themes.Brush(owner, "C1D3A8");
-            Owner = owner; Title = "Edit song"; Width = 720; Height = 730; MinWidth = 600; MinHeight = 520; WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = owner.Background; Foreground = owner.Foreground; Resources = owner.Resources; FontFamily = owner.FontFamily;
+            Owner = owner; Title = "Edit song"; Width = 720; Height = 730; MinWidth = 600; MinHeight = 520; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = owner.Background; Foreground = owner.Foreground; Resources = owner.Resources; FontFamily = owner.FontFamily;
             var root = new StackPanel { Margin = new Thickness(28) }; Content = new ScrollViewer { Background = owner.Background, Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             root.Children.Add(new TextBlock { Text = "Make it yours.", FontSize = 28, Margin = new Thickness(0, 0, 0, 6) });
             root.Children.Add(new TextBlock { Text = Path.GetFileName(track.Path), TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Themes.Brush(owner, "919A92"), Margin = new Thickness(0, 0, 0, 20) });
