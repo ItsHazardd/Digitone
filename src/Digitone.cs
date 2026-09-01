@@ -50,7 +50,8 @@ namespace Digitone
         public string CoverData { get; set; }
         public string FolderPath { get; set; }
         public bool FolderPreferenceInitialized { get; set; }
-        public Playlist() { Paths = new List<string>(); }
+        public List<string> ExcludedPaths { get; set; }
+        public Playlist() { Paths = new List<string>(); ExcludedPaths = new List<string>(); }
     }
     internal sealed class BatchArtworkResult
     {
@@ -80,7 +81,8 @@ namespace Digitone
         public string AudioOutputId { get; set; }
         public string MainMusicFolder { get; set; }
         public List<string> MusicFolders { get; set; }
-        public Library() { Tracks = new List<Track>(); Playlists = new List<Playlist>(); Volume = 0.7; AutoCheckUpdates = true; }
+        public List<string> RemovedPaths { get; set; }
+        public Library() { Tracks = new List<Track>(); Playlists = new List<Playlist>(); RemovedPaths = new List<string>(); Volume = 0.7; AutoCheckUpdates = true; }
     }
     public static class LocalFiles
     {
@@ -149,8 +151,10 @@ namespace Digitone
             if (data == null || data.Tracks == null || data.Playlists == null || data.Tracks.Any(t => t == null || String.IsNullOrEmpty(t.Path)) || data.Playlists.Any(p => p == null || p.Paths == null || String.IsNullOrEmpty(p.Name)))
                 throw new InvalidDataException("The saved library is invalid. It has not been overwritten.");
             data.Tracks = data.Tracks.Where(t => LocalFiles.IsLocal(t.Path) && LocalFiles.IsAudio(t.Path)).GroupBy(t => t.Path, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+            if(data.RemovedPaths==null)data.RemovedPaths=new List<string>();
+            data.RemovedPaths=data.RemovedPaths.Where(p=>!String.IsNullOrWhiteSpace(p)&&LocalFiles.IsLocal(p)&&LocalFiles.IsAudio(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var allowed = new HashSet<string>(data.Tracks.Select(t => t.Path), StringComparer.OrdinalIgnoreCase);
-            foreach (Playlist playlist in data.Playlists) playlist.Paths = playlist.Paths.Where(p => p != null && allowed.Contains(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            foreach (Playlist playlist in data.Playlists) { playlist.Paths = playlist.Paths.Where(p => p != null && allowed.Contains(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();if(playlist.ExcludedPaths==null)playlist.ExcludedPaths=new List<string>();playlist.ExcludedPaths=playlist.ExcludedPaths.Where(p=>!String.IsNullOrWhiteSpace(p)&&LocalFiles.IsLocal(p)&&LocalFiles.IsAudio(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(); }
             data.Volume = Math.Max(0, Math.Min(1, data.Volume));
             return data;
         }
@@ -239,6 +243,11 @@ namespace Digitone
         private Track current;
         private Point trackDragStart;
         private ListBoxItem playlistDropItem;
+        private Border undoNotice;
+        private Border undoCountdown;
+        private TextBlock undoText;
+        private Action undoAction;
+        private readonly DispatcherTimer undoTimer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(10)};
         internal DownloadController Downloads;
         private List<Track> visible = new List<Track>();
         internal bool MediaReady { get { return ready; } }
@@ -257,6 +266,7 @@ namespace Digitone
             NativeChrome.Register();
             this.store = store; Data = data;if(RemoveMainFolderPlaylist())try{store.Save(Data);}catch{}
             using (Stream xaml = Assembly.GetExecutingAssembly().GetManifestResourceStream("MainWindow.xaml")) Window = (Window)XamlReader.Load(xaml);
+            SetupUndoNotice();
             SetupExpandedWaveform();
             SetupThemes();
             SetupSettings();
@@ -282,7 +292,6 @@ namespace Digitone
             Click("VisualizerButton", delegate { SetMainVisualizer("Waveform"); });
             Click("MainSpectrumButton", delegate { SetMainVisualizer("Spectrum"); });
             Click("MainVisualizerOffButton", delegate { SetMainVisualizer("Off"); });
-            Click("RemoveButton", RemoveSelected);
             Click("DeletePlaylistButton", DeletePlaylist);
             Click("PlayAllButton", delegate { StartQueue(visible, null); });
             Click("PlayButton", TogglePlay);
@@ -322,6 +331,7 @@ namespace Digitone
             Menu(trackMenu, "Add / remove favorite", ToggleFavorite);
             Menu(trackMenu, "Edit song details…", EditSelectedTrack);
             Menu(trackMenu, "Set artwork for selected songs…", SetBatchArtwork);
+            Menu(trackMenu, "Remove from this collection", RemoveSelected);
             Find<ListBox>("Tracks").ContextMenu = trackMenu;
             Find<ListBox>("Tracks").PreviewMouseRightButtonDown+=delegate(object sender,MouseButtonEventArgs e){DependencyObject source=e.OriginalSource as DependencyObject;while(source!=null&&!(source is ListBoxItem))source=source is Visual?VisualTreeHelper.GetParent(source):null;var item=source as ListBoxItem;if(item!=null&&!item.IsSelected){Find<ListBox>("Tracks").SelectedItems.Clear();item.IsSelected=true;}};
             var playlistMenu = new ContextMenu();
@@ -415,6 +425,7 @@ namespace Digitone
                 int skipped = 0;
                 RememberMusicFolders(paths);
                 List<string> found = await Task.Run(delegate { int count; var result = LocalFiles.Scan(paths, out count); skipped = count; return result; });
+                var removedPaths=new HashSet<string>(Data.RemovedPaths??new List<string>(),StringComparer.OrdinalIgnoreCase);found=found.Where(p=>!removedPaths.Contains(p)).ToList();
                 var known = new HashSet<string>(Data.Tracks.Select(t => t.Path), StringComparer.OrdinalIgnoreCase);
                 int added = 0;
                 foreach (string path in found) if (known.Add(path)) { Track track = await Task.Run(delegate { var t = new Track { Path = path }; try { SongTags.ReadInto(t); } catch { } return t; }); Data.Tracks.Add(track); added++; }
@@ -441,9 +452,10 @@ namespace Digitone
         {
             string full=System.IO.Path.GetFullPath(folder).TrimEnd(System.IO.Path.DirectorySeparatorChar); string name=new DirectoryInfo(full).Name;
             if(SameFolder(full,Data.MainMusicFolder)){RemoveMainFolderPlaylist();RefreshPlaylists();RefreshPlaylistGrid();return;}
-            var paths=found.Where(p=>p.StartsWith(full+System.IO.Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if(paths.Count==0)return;
             var playlist=Data.Playlists.FirstOrDefault(p=>String.Equals(p.FolderPath,full,StringComparison.OrdinalIgnoreCase));
+            var excluded=new HashSet<string>(playlist==null||playlist.ExcludedPaths==null?Enumerable.Empty<string>():playlist.ExcludedPaths,StringComparer.OrdinalIgnoreCase);
+            var paths=found.Where(p=>p.StartsWith(full+System.IO.Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)&&!excluded.Contains(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if(paths.Count==0)return;
             if(playlist==null){string baseName=name;int suffix=2;while(Data.Playlists.Any(p=>String.Equals(p.Name,name,StringComparison.CurrentCultureIgnoreCase)))name=baseName+" ("+(suffix++)+")";playlist=new Playlist{Name=name,Favorite=false,FolderPath=full,FolderPreferenceInitialized=true}; Data.Playlists.Add(playlist); }
             playlist.FolderPath=full;if(!playlist.FolderPreferenceInitialized){playlist.Favorite=false;playlist.FolderPreferenceInitialized=true;}playlist.Paths=paths;
             RefreshPlaylists(); RefreshPlaylistGrid();
@@ -476,7 +488,7 @@ namespace Digitone
             Find<Border>("NowPane").Visibility = show ? Visibility.Collapsed : Visibility.Visible;
             Find<Button>("DownloadsButton").Background = show ? dim : Brushes.Transparent;
             UpdateNavigationOutline(); Motion.Enter(show ? (FrameworkElement)Find<Grid>("DownloadPane") : Find<Grid>("LibraryPane"), 28, 0);
-            if (show) { Find<Button>("LibraryButton").Background = Brushes.Transparent; Find<Button>("FavoritesButton").Background = Brushes.Transparent; Find<ListBox>("Playlists").SelectedItem = null; Downloads.RefreshTools(); }
+            if (show) { Find<Button>("LibraryButton").Background = Brushes.Transparent; Find<Button>("FavoritesButton").Background = Brushes.Transparent; Find<ListBox>("Playlists").SelectedItem = null; Downloads.RefreshTools(); Downloads.RefreshPlaylists(); }
         }
         private void RefreshPlaylists() { var list = Find<ListBox>("Playlists"); list.ItemsSource = null; list.ItemsSource = Data.Playlists.Where(p=>p.Favorite).ToList(); if (selectedPlaylist != null) list.SelectedItem = selectedPlaylist; }
         private void RefreshPlaylistGrid()
@@ -485,8 +497,8 @@ namespace Digitone
             var straightCard=(ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'><Border x:Name='PlaylistCardSurface' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border></ControlTemplate>");
             foreach(Playlist playlist in Data.Playlists.OrderBy(p=>p.Name,StringComparer.CurrentCultureIgnoreCase))
             {
-                var stack=new StackPanel();var art=new Grid{Width=164,Height=164,Background=dim};var image=new Image{Source=SongTags.ImageFromData(playlist.CoverData),Stretch=Stretch.UniformToFill};art.Children.Add(image);if(image.Source==null)art.Children.Add(new TextBlock{Text=(playlist.Name??"?").Substring(0,1).ToUpperInvariant(),FontFamily=(FontFamily)Window.Resources["ThemeDisplayFont"],FontSize=62,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Foreground=accent});stack.Children.Add(art);var title=new TextBlock{Text=playlist.Name,FontSize=16,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.None,TextWrapping=TextWrapping.NoWrap};stack.Children.Add(new Viewbox{Name="PlaylistTitleFit",Width=164,Height=30,Stretch=Stretch.Uniform,StretchDirection=StretchDirection.DownOnly,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,8,0,2),Child=title});stack.Children.Add(new TextBlock{Text=playlist.Paths.Count+" tracks",Foreground=(Brush)Window.FindResource("B919A92"),FontSize=10});
-                var card=new Button{Content=stack,Tag=playlist,Template=straightCard,Width=196,Height=252,Padding=new Thickness(14),Margin=new Thickness(0,0,16,16),HorizontalContentAlignment=HorizontalAlignment.Left,VerticalContentAlignment=VerticalAlignment.Top,Background=Themes.Brush(Window,"1C211D"),BorderBrush=Themes.Brush(Window,"354233")};card.Click+=delegate{SelectCollection(playlist,false);};
+                var stack=new StackPanel();var art=new Grid{Width=164,Height=164,Background=dim};var image=new Image{Source=SongTags.ImageFromData(playlist.CoverData),Stretch=Stretch.UniformToFill};art.Children.Add(image);if(image.Source==null)art.Children.Add(new TextBlock{Text=(playlist.Name??"?").Substring(0,1).ToUpperInvariant(),FontFamily=(FontFamily)Window.Resources["ThemeDisplayFont"],FontSize=62,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Foreground=accent});stack.Children.Add(art);var title=new TextBlock{Name="PlaylistTitleFull",Text=playlist.Name,ToolTip=playlist.Name,Width=164,MinHeight=30,MaxHeight=58,FontSize=15,FontWeight=FontWeights.SemiBold,TextTrimming=TextTrimming.None,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,8,0,2)};stack.Children.Add(title);stack.Children.Add(new TextBlock{Text=playlist.Paths.Count+" tracks",Foreground=(Brush)Window.FindResource("B919A92"),FontSize=10});
+                var card=new Button{Content=stack,Tag=playlist,Template=straightCard,Width=196,Height=286,Padding=new Thickness(14),Margin=new Thickness(0,0,16,16),HorizontalContentAlignment=HorizontalAlignment.Left,VerticalContentAlignment=VerticalAlignment.Top,Background=Themes.Brush(Window,"1C211D"),BorderBrush=Themes.Brush(Window,"354233")};card.Click+=delegate{SelectCollection(playlist,false);};
                 var menu=new ContextMenu();Menu(menu,"Change square cover…",delegate{ChangePlaylistCover(playlist);});Menu(menu,"Remove square cover",delegate{playlist.CoverData=null;Save();RefreshPlaylistGrid();});Menu(menu,playlist.Favorite?"Remove from quick access":"Add to quick access",delegate{playlist.Favorite=!playlist.Favorite;Save();RefreshPlaylists();RefreshPlaylistGrid();});Menu(menu,"Delete playlist…",delegate{selectedPlaylist=playlist;DeletePlaylist();});card.ContextMenu=menu;grid.Children.Add(card);
             }
         }
@@ -515,6 +527,11 @@ namespace Digitone
             var playlist = new Playlist { Name = name.Trim(), Favorite = false, Paths = tracks.Select(t => t.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToList() };
             Data.Playlists.Add(playlist); selectedPlaylist = playlist; favorites = false; RefreshPlaylists(); RefreshPlaylistGrid(); RefreshTracks(); Save(); return playlist;
         }
+        internal Playlist AddDownloadedTracks(string name,string folder,IEnumerable<Track> tracks,Playlist playlist)
+        {
+            var incoming=tracks.Where(t=>t!=null).ToList();if(playlist==null){playlist=Data.Playlists.FirstOrDefault(p=>SameFolder(p.FolderPath,folder));if(playlist==null){string chosen=(name??"Downloaded playlist").Trim(),basis=chosen;int suffix=2;while(Data.Playlists.Any(p=>String.Equals(p.Name,chosen,StringComparison.CurrentCultureIgnoreCase)))chosen=basis+" ("+(suffix++)+")";playlist=new Playlist{Name=chosen,Favorite=false,FolderPath=System.IO.Path.GetFullPath(folder).TrimEnd(System.IO.Path.DirectorySeparatorChar),FolderPreferenceInitialized=true};Data.Playlists.Add(playlist);}}
+            foreach(var track in incoming)if(!playlist.Paths.Contains(track.Path,StringComparer.OrdinalIgnoreCase))playlist.Paths.Add(track.Path);RefreshPlaylists();RefreshPlaylistGrid();RefreshTracks();Save();return playlist;
+        }
         private void MakeMix()
         {
             if (visible.Count == 0) return;
@@ -526,8 +543,8 @@ namespace Digitone
         {
             var tracks = Selected(); if (tracks.Count == 0) { Status("Select one or more tracks first. Hold Ctrl or Shift to select several."); return; }
             if (Data.Playlists.Count == 0) { string name = Prompt("New playlist", "Save your selected tracks together.", "My playlist"); if (name != null) CreatePlaylist(name, tracks); return; }
-            var dialog = Dialog("Add to playlist", 380, 270); var panel = DialogPanel(dialog, "Choose a playlist for " + tracks.Count + " tracks.");
-            var choices = new ComboBox { ItemsSource = Data.Playlists.OrderByDescending(p=>p.Favorite).ThenBy(p=>p.Name).ToList(), DisplayMemberPath = "Name", SelectedIndex = 0, Margin = new Thickness(0, 18, 0, 22), FontSize = 15, Padding = new Thickness(8) }; panel.Children.Add(choices);
+            var dialog = Dialog("Add to playlist", 560, 300); var panel = DialogPanel(dialog, "Choose a playlist for " + tracks.Count + " tracks.");
+            var choices = new ComboBox { ItemsSource = Data.Playlists.OrderByDescending(p=>p.Favorite).ThenBy(p=>p.Name).ToList(), SelectedValuePath="Name",SelectedIndex = 0, Margin = new Thickness(0, 18, 0, 22), FontSize = 15, Padding = new Thickness(8),HorizontalContentAlignment=HorizontalAlignment.Stretch };var playlistTemplate=new DataTemplate();var textFactory=new FrameworkElementFactory(typeof(TextBlock));textFactory.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));textFactory.SetBinding(FrameworkElement.ToolTipProperty,new System.Windows.Data.Binding("Name"));textFactory.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);playlistTemplate.VisualTree=textFactory;choices.ItemTemplate=playlistTemplate;panel.Children.Add(choices);
             var accept = new Button { Content = "Add tracks", IsDefault = true }; accept.Click += delegate { dialog.DialogResult = true; }; panel.Children.Add(accept);
             if (dialog.ShowDialog() == true) AddSelectedToPlaylist((Playlist)choices.SelectedItem);
         }
@@ -537,11 +554,11 @@ namespace Digitone
         }
         internal int AddSelectedToPlaylist(Playlist playlist)
         {
-            if(playlist==null)return 0;var tracks=Selected();if(tracks.Count==0){Status("Select one or more tracks first. Hold Ctrl or Shift to select several.");return 0;}int added=0;foreach(Track track in tracks)if(!playlist.Paths.Contains(track.Path,StringComparer.OrdinalIgnoreCase)){playlist.Paths.Add(track.Path);added++;}if(Save())Status(added==0?"Those songs are already in "+playlist.Name+".":"Added "+added+" song"+(added==1?"":"s")+" to "+playlist.Name+".");RefreshTracks();return added;
+            if(playlist==null)return 0;var tracks=Selected();if(tracks.Count==0){Status("Select one or more tracks first. Hold Ctrl or Shift to select several.");return 0;}if(playlist.ExcludedPaths==null)playlist.ExcludedPaths=new List<string>();int added=0;foreach(Track track in tracks){playlist.ExcludedPaths.RemoveAll(p=>String.Equals(p,track.Path,StringComparison.OrdinalIgnoreCase));if(!playlist.Paths.Contains(track.Path,StringComparer.OrdinalIgnoreCase)){playlist.Paths.Add(track.Path);added++;}}if(Save())Status(added==0?"Those songs are already in "+playlist.Name+".":"Added "+added+" song"+(added==1?"":"s")+" to "+playlist.Name+".");RefreshTracks();return added;
         }
         private void ToggleFavorite()
         {
-            var tracks = Selected(); if (tracks.Count == 0) { Status("Select tracks to add or remove favorites."); return; } bool value = tracks.Any(t => !t.Favorite); foreach (Track track in tracks) track.Favorite = value; RefreshTracks(); if (Save()) Status(value ? "Saved to Favorites." : "Removed from Favorites.");
+            var tracks = Selected(); if (tracks.Count == 0) { Status("Select tracks to add or remove favorites."); return; } bool value = tracks.Any(t => !t.Favorite);var previous=tracks.ToDictionary(t=>t,t=>t.Favorite); foreach (Track track in tracks) track.Favorite = value; RefreshTracks(); if (Save()) Status(value ? "Saved to Favorites." : "Removed from Favorites.");if(!value)ShowUndoNotice("Removed "+tracks.Count+" song"+(tracks.Count==1?"":"s")+" from Favorites.",delegate{foreach(var pair in previous)pair.Key.Favorite=pair.Value;Save();RefreshTracks();Status("Favorites removal undone.");});
         }
         private async void SetBatchArtwork()
         {
@@ -554,7 +571,7 @@ namespace Digitone
             {
                 var result=await ApplyBatchArtworkDetailed(tracks,cover,delegate(int done){Status("Writing artwork · "+Math.Min(tracks.Count,done+1)+" / "+tracks.Count);});
                 Save();RefreshTracks();UpdateCover();Status("Artwork updated on "+result.Succeeded.Count+" of "+tracks.Count+" songs.");
-                if(result.Failed.Count>0||result.Unsupported.Count>0){var lines=new List<string>{result.Succeeded.Count+" updated · "+result.Failed.Count+" failed · "+result.Unsupported.Count+" unsupported"};if(result.Failed.Count>0){lines.Add("");lines.Add("Failed:");lines.AddRange(result.Failed.Select(pair=>System.IO.Path.GetFileName(pair.Key)+" — "+pair.Value));}if(result.Unsupported.Count>0){lines.Add("");lines.Add("Unsupported (MP3, FLAC, and M4A can store verified artwork):");lines.AddRange(result.Unsupported.Select(System.IO.Path.GetFileName));}MessageBox.Show(Window,String.Join("\n",lines),"Batch artwork results",MessageBoxButton.OK,result.Failed.Count>0?MessageBoxImage.Warning:MessageBoxImage.Information);}
+                if(result.Failed.Count>0||result.Unsupported.Count>0){var lines=new List<string>{result.Succeeded.Count+" updated · "+result.Failed.Count+" failed · "+result.Unsupported.Count+" unsupported"};if(result.Failed.Count>0){lines.Add("");lines.Add("Failed:");lines.AddRange(result.Failed.Select(pair=>System.IO.Path.GetFileName(pair.Key)+": "+pair.Value));}if(result.Unsupported.Count>0){lines.Add("");lines.Add("Unsupported (MP3, FLAC, and M4A can store verified artwork):");lines.AddRange(result.Unsupported.Select(System.IO.Path.GetFileName));}MessageBox.Show(Window,String.Join("\n",lines),"Batch artwork results",MessageBoxButton.OK,result.Failed.Count>0?MessageBoxImage.Warning:MessageBoxImage.Information);}
             }
             catch(Exception e){Save();RefreshTracks();Status("Batch artwork could not continue: "+e.Message);}
             finally{ importing=false; SetLibraryArtworkBusy(false); }
@@ -596,18 +613,38 @@ namespace Digitone
             folder.Click+=async delegate{folder.IsEnabled=false;try{var match=await Task.Run(delegate{return ArtworkFinder.Local(tracks[0].Path);});if(match==null)status.Text="No folder cover was found beside the first selected song.";else select(match.Image,match.Description);}catch(Exception e){status.Text=e.Message;}finally{folder.IsEnabled=true;}};
             apply.Click+=delegate{dialog.DialogResult=true;};return dialog.ShowDialog()==true?chosen:null;
         }
+        private void SetupUndoNotice()
+        {
+            var root=Window.Content as Grid;if(root==null)return;undoText=new TextBlock{VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,13,0),FontSize=13,FontWeight=FontWeights.SemiBold};undoText.SetResourceReference(TextBlock.ForegroundProperty,"BEEEFE8");var undo=new Button{Name="UndoActionButton",Content="UNDO",Padding=new Thickness(14,5,14,5),FontSize=13,FontWeight=FontWeights.Bold,BorderThickness=new Thickness(2),Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=Colors.Cyan,BlurRadius=14,ShadowDepth=0,Opacity=.78}};undo.SetResourceReference(Control.BorderBrushProperty,"BC1D3A8");undo.Click+=delegate{RunUndo();};var row=new DockPanel();DockPanel.SetDock(undo,Dock.Right);row.Children.Add(undo);row.Children.Add(undoText);undoCountdown=new Border{Name="UndoCountdownBar",Height=3,HorizontalAlignment=HorizontalAlignment.Stretch,RenderTransformOrigin=new Point(0,0.5),Margin=new Thickness(0,7,0,0),RenderTransform=new ScaleTransform(1,1),Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=Colors.Cyan,BlurRadius=8,ShadowDepth=0,Opacity=.85}};undoCountdown.SetResourceReference(Border.BackgroundProperty,"BC1D3A8");var body=new StackPanel();body.Children.Add(row);body.Children.Add(undoCountdown);undoNotice=new Border{Name="UndoNotice",Child=body,Visibility=Visibility.Collapsed,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(24,90,24,24),Padding=new Thickness(13,7,9,7),BorderThickness=new Thickness(2),MinWidth=340,MaxWidth=580,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=Colors.Cyan,BlurRadius=18,ShadowDepth=0,Opacity=.65}};undoNotice.SetResourceReference(Border.BackgroundProperty,"B1C211D");undoNotice.SetResourceReference(Border.BorderBrushProperty,"BC1D3A8");Grid.SetRow(undoNotice,0);Grid.SetRowSpan(undoNotice,Math.Max(1,root.RowDefinitions.Count));Grid.SetColumn(undoNotice,0);Grid.SetColumnSpan(undoNotice,Math.Max(1,root.ColumnDefinitions.Count));Panel.SetZIndex(undoNotice,10000);root.Children.Add(undoNotice);undoTimer.Tick+=delegate{undoTimer.Stop();undoAction=null;undoCountdown.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty,null);undoNotice.Visibility=Visibility.Collapsed;};
+        }
+        internal void ShowUndoNotice(string message,Action action){undoTimer.Stop();undoCountdown.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty,null);((ScaleTransform)undoCountdown.RenderTransform).ScaleX=1;undoText.Text=message;undoAction=action;undoNotice.Visibility=Visibility.Visible;undoCountdown.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty,new System.Windows.Media.Animation.DoubleAnimation(1,0,undoTimer.Interval){FillBehavior=System.Windows.Media.Animation.FillBehavior.HoldEnd});undoTimer.Start();}
+        private void RunUndo(){var action=undoAction;undoAction=null;undoTimer.Stop();undoCountdown.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty,null);undoNotice.Visibility=Visibility.Collapsed;if(action!=null)action();}
+        internal bool UndoAvailable{get{return undoAction!=null&&undoNotice!=null&&undoNotice.Visibility==Visibility.Visible;}}
+        internal void UndoLastRemoval(){RunUndo();}
         private void RemoveSelected()
         {
             var tracks = Selected(); if (tracks.Count == 0) { Status("Select the tracks you want to remove."); return; }
-            if (selectedPlaylist != null) { foreach (Track track in tracks) selectedPlaylist.Paths.Remove(track.Path); }
+            if (selectedPlaylist != null) { Playlist target=selectedPlaylist;if(target.ExcludedPaths==null)target.ExcludedPaths=new List<string>();var removed=tracks.Select(t=>new KeyValuePair<int,string>(target.Paths.IndexOf(t.Path),t.Path)).Where(x=>x.Key>=0).OrderBy(x=>x.Key).ToList();foreach (Track track in tracks){target.Paths.Remove(track.Path);if(!String.IsNullOrWhiteSpace(target.FolderPath)&&!target.ExcludedPaths.Contains(track.Path,StringComparer.OrdinalIgnoreCase))target.ExcludedPaths.Add(track.Path);}ShowUndoNotice("Removed "+removed.Count+" song"+(removed.Count==1?"":"s")+" from "+target.Name+".",delegate{foreach(var item in removed){target.ExcludedPaths.RemoveAll(p=>String.Equals(p,item.Value,StringComparison.OrdinalIgnoreCase));if(!target.Paths.Contains(item.Value,StringComparer.OrdinalIgnoreCase))target.Paths.Insert(Math.Min(item.Key,target.Paths.Count),item.Value);}Save();RefreshTracks();RefreshPlaylistGrid();Status("Playlist removal undone.");}); }
+            else if(favorites)
+            {
+                foreach(Track track in tracks)track.Favorite=false;ShowUndoNotice("Removed "+tracks.Count+" song"+(tracks.Count==1?"":"s")+" from Favorites.",delegate{foreach(Track track in tracks)track.Favorite=true;Save();RefreshTracks();Status("Favorites removal undone.");});
+            }
             else
             {
                 if (MessageBox.Show(Window, "Remove " + tracks.Count + " tracks from Digitone and its playlists?\n\nYour audio files will NOT be deleted.", "Remove from library", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-                foreach (Track track in tracks) { Data.Tracks.Remove(track); foreach (Playlist playlist in Data.Playlists) playlist.Paths.Remove(track.Path); }
-                if (current != null && tracks.Contains(current)) StopAndClear();
-                else { Track playingTrack = current; queue.RemoveAll(tracks.Contains); queueIndex = playingTrack == null ? -1 : queue.IndexOf(playingTrack); RefreshQueue(); }
+                RemoveTracksFromLibrary(tracks);
             }
             RefreshTracks(); if (Save()) Status("Removed from this collection. No audio files were deleted.");
+        }
+        internal void RemoveTracksFromLibrary(List<Track> tracks)
+        {
+            if(tracks==null||tracks.Count==0)return;if(Data.RemovedPaths==null)Data.RemovedPaths=new List<string>();
+            var trackPositions=tracks.Select(t=>new KeyValuePair<int,Track>(Data.Tracks.IndexOf(t),t)).Where(p=>p.Key>=0).OrderBy(p=>p.Key).ToList();
+            var memberships=Data.Playlists.SelectMany(p=>tracks.Select(t=>new{Playlist=p,Path=t.Path,Index=p.Paths.IndexOf(t.Path)})).Where(x=>x.Index>=0).ToList();
+            var oldQueue=queue.ToList();Track oldCurrent=current;
+            foreach(Track track in tracks){Data.Tracks.Remove(track);foreach(Playlist playlist in Data.Playlists)playlist.Paths.Remove(track.Path);if(!Data.RemovedPaths.Contains(track.Path,StringComparer.OrdinalIgnoreCase))Data.RemovedPaths.Add(track.Path);}
+            if(current!=null&&tracks.Contains(current))StopAndClear();else{Track playingTrack=current;queue.RemoveAll(tracks.Contains);queueIndex=playingTrack==null?-1:queue.IndexOf(playingTrack);RefreshQueue();}
+            ShowUndoNotice("Removed "+tracks.Count+" song"+(tracks.Count==1?"":"s")+" from the library. Audio files were kept.",delegate{foreach(var item in trackPositions){Data.RemovedPaths.RemoveAll(p=>String.Equals(p,item.Value.Path,StringComparison.OrdinalIgnoreCase));if(!Data.Tracks.Any(t=>String.Equals(t.Path,item.Value.Path,StringComparison.OrdinalIgnoreCase))&&File.Exists(item.Value.Path))Data.Tracks.Insert(Math.Min(item.Key,Data.Tracks.Count),item.Value);}foreach(var item in memberships)if(Data.Tracks.Any(t=>String.Equals(t.Path,item.Path,StringComparison.OrdinalIgnoreCase))&&!item.Playlist.Paths.Contains(item.Path,StringComparer.OrdinalIgnoreCase))item.Playlist.Paths.Insert(Math.Min(item.Index,item.Playlist.Paths.Count),item.Path);queue.Clear();queue.AddRange(oldQueue.Where(t=>Data.Tracks.Contains(t)));queueIndex=oldCurrent==null?-1:queue.IndexOf(oldCurrent);Save();RefreshQueue();RefreshTracks();RefreshPlaylistGrid();Status("Library removal undone.");});
         }
         private async void DeletePlaylist()
         {
@@ -661,7 +698,7 @@ namespace Digitone
             if (queueIndex < 0) { StartQueue(tracks, null); return; }
             if (next) queue.InsertRange(queueIndex + 1, tracks); else queue.AddRange(tracks); RefreshQueue(); Status(tracks.Count + " tracks added to the queue.");
         }
-        private void RemoveQueued(){ int selected=Find<ListBox>("Queue").SelectedIndex; int actual=queueIndex+1+selected; if(selected<0||actual<0||actual>=queue.Count)return; queue.RemoveAt(actual); RefreshQueue(); }
+        private void RemoveQueued(){ int selected=Find<ListBox>("Queue").SelectedIndex; int actual=queueIndex+1+selected; if(selected<0||actual<0||actual>=queue.Count)return;Track removed=queue[actual];queue.RemoveAt(actual);RefreshQueue();ShowUndoNotice("Removed "+removed.Title+" from the queue.",delegate{int at=Math.Max(queueIndex+1,Math.Min(actual,queue.Count));queue.Insert(at,removed);RefreshQueue();Status("Queue removal undone.");}); }
         private void MoveQueued(int direction){ int selected=Find<ListBox>("Queue").SelectedIndex; int actual=queueIndex+1+selected,next=actual+direction; if(selected<0||next<=queueIndex||next>=queue.Count)return; Track item=queue[actual]; queue.RemoveAt(actual); queue.Insert(next,item); RefreshQueue(); Find<ListBox>("Queue").SelectedIndex=selected+direction; }
         internal void PlayAt(int index)
         {

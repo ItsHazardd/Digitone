@@ -95,7 +95,7 @@ namespace Digitone
             foreach (var candidate in candidates.Take(8))
             {
                 token.ThrowIfCancellationRequested(); Guid id; if (!candidate.ContainsKey("id") || !Guid.TryParse(Convert.ToString(candidate["id"]),out id) || !seen.Add(id)) continue;
-                try { byte[] picture = fetch(new Uri("https://coverartarchive.org/release/" + id + "/front-500"),token); return new ArtworkMatch { Image = Normalize(picture), Description = "Cover Art Archive · " + artist + " — " + (candidate.ContainsKey("title") ? Convert.ToString(candidate["title"]) : album) }; }
+                try { byte[] picture = fetch(new Uri("https://coverartarchive.org/release/" + id + "/front-500"),token); return new ArtworkMatch { Image = Normalize(picture), Description = "Cover Art Archive · " + artist + ": " + (candidate.ContainsKey("title") ? Convert.ToString(candidate["title"]) : album) }; }
                 catch (WebException e) { var response = e.Response as HttpWebResponse; if (response == null || response.StatusCode != HttpStatusCode.NotFound) throw; response.Close(); }
             }
             return null;

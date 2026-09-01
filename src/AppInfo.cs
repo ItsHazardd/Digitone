@@ -2,10 +2,33 @@ namespace Digitone
 {
     internal static class AppInfo
     {
-        // Release.Batch.Day — update this single value after each completed batch.
-        internal const string Version = "3.3.31";
+        // Release.Batch.Day: update this single value after each completed batch.
+        internal const string Version = "4.0.1";
         internal const string Changelog =
-@"VERSION 3 · CURRENT RELEASE
+@"VERSION 4 · CURRENT RELEASE
+
+DOWNLOADS AND YOUTUBE
+• Downloads can be sent directly to any existing playlist from the persistent Downloads destination menu.
+• New downloaded playlists keep their audio in separate named folders instead of mixing every download together.
+• Added a sequential download queue with pending, active, completed, failed, cancelled, retry, and open-folder controls.
+• Simplified download destinations into mutually exclusive Existing playlist and New playlist modes, with diagnostics collapsed by default.
+• Added a separate YouTube viewer for recommendations, persistent sign-in, and sending its current video or playlist directly to Digitone's downloader.
+• Added audio-only Current video and Entire playlist actions plus an existing-playlist destination picker inside the YouTube viewer.
+
+LIBRARY AND UNDO
+• Added a compact neon Undo notice with a ten-second countdown bar.
+• Undo restores removals from playlists, folder playlists, Favorites, the library, playback queue, and pending download queue.
+• Library Undo restores metadata, ordering, playlist membership, and queue placement.
+• Rescanning remembers intentional library and folder-playlist removals instead of silently adding those songs back.
+• Moved song removal from the bottom action row into the song right-click menu while preserving Ctrl/Shift selection and Undo.
+
+SETTINGS AND ACCESSIBILITY
+• Reorganized Settings into Appearance, Audio, Music folders, and General tabs, with vertical wheel scrolling preserved over the horizontal theme strip.
+• Made full playlist names visible through wrapped cards, wider selectors, fitted collection headers, and complete-title tooltips.
+• Kept download diagnostics collapsed until Show details is selected.";
+
+        internal const string Release3Changelog =
+@"VERSION 3 · RELEASE HISTORY
 
 LIBRARY AND PLAYLISTS
 • Restored the Add to playlist submenu in the song right-click menu for single and Ctrl/Shift selections.
@@ -88,7 +111,7 @@ APPEARANCE AND SETUP
 • Added an optional persistent Neon mode for controls, visualizers, and moving theme accents.
 • Added the Spectrum visualizer while keeping the turntable prominent.
 • Added first-run folder setup, dependency updates, GEMMA and Hazzy credits, centralized versioning, and this changelog.";
-        internal static readonly string[] ChangelogVersions = { "Version 3 · Current release", "Version 2 · Release history", "Version 1 · Release history" };
-        internal static readonly string[] Changelogs = { Changelog, Release2Changelog, Release1Changelog };
+        internal static readonly string[] ChangelogVersions = { "Version 4 · Current release", "Version 3 · Release history", "Version 2 · Release history", "Version 1 · Release history" };
+        internal static readonly string[] Changelogs = { Changelog, Release3Changelog, Release2Changelog, Release1Changelog };
     }
 }

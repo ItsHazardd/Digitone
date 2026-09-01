@@ -75,7 +75,7 @@ namespace Digitone
             var panel = new StackPanel { Margin = new Thickness(26) }; Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = owner.Background };
             panel.Children.Add(new TextBlock { Text = "Delete “" + name + "”?", FontSize = 24, TextWrapping = TextWrapping.Wrap });
             panel.Children.Add(new TextBlock { Text = count + " songs · " + shared + " also used in other playlists", Foreground = Brushes.Gray, Margin = new Thickness(0, 10, 0, 18) });
-            Keep = Choice("Delete playlist only — keep all music files", true); Move = Choice("Move songs to a Deleted folder", false); Delete = Choice("Permanently delete songs from disk", false);
+            Keep = Choice("Delete playlist only. Keep all music files", true); Move = Choice("Move songs to a Deleted folder", false); Delete = Choice("Permanently delete songs from disk", false);
             panel.Children.Add(Keep); panel.Children.Add(Move); panel.Children.Add(Delete);
             var folder = new TextBlock { Text = DeletedRoot, TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 10, 0, 8) }; panel.Children.Add(folder);
             var browse = new Button { Content = "Choose Deleted folder…", HorizontalAlignment = HorizontalAlignment.Left }; panel.Children.Add(browse);
