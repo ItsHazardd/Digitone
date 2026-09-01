@@ -3,7 +3,7 @@ namespace Digitone
     internal static class AppInfo
     {
         // Release.Batch.Day — update this single value after each completed batch.
-        internal const string Version = "3.0.30";
+        internal const string Version = "3.3.31";
         internal const string Changelog =
 @"VERSION 3 · CURRENT RELEASE
 
@@ -37,6 +37,8 @@ APPEARANCE
 • Extended optional Neon glow to the fullscreen visualizers without changing their modes or playback path.
 • Restored fluid aspect-ratio record sizing inside a dedicated layout row so it never overlaps song information.
 • Kept Sanctuary greenery visible across landscape and portrait layouts while preserving scene proportions.
+• Added an original Mount Olympus theme with a summit temple and Athena owl relief, layered rocky cliffs, ascending stairs, moving fog, flowing music, and divine day and storm-night skies drawn entirely in code.
+• Preserved the Olympus architecture proportions in tall windows and moved its focal group clear of the centered record.
 
 UPDATES
 • Removed release-note spoilers from automatic update prompts; full details remain in the Changelog menu.

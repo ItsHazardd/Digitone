@@ -8,8 +8,8 @@ namespace Digitone
 {
     internal static class Themes
     {
-        internal static readonly string[] Names = { "Midnight", "Overworld", "Spire", "Collective", "Sanctuary" };
-        internal static string Label(string name) { return name=="Midnight" ? "Persona 3 Reload" : name=="Overworld" ? "Minecraft" : name=="Spire" ? "Slay the Spire 2" : name=="Collective" ? "Communism" : name=="Sanctuary" ? "Tree House Sanctuary" : name; }
+        internal static readonly string[] Names = { "Midnight", "Overworld", "Spire", "Collective", "Sanctuary", "Olympus" };
+        internal static string Label(string name) { return name=="Midnight" ? "Persona 3 Reload" : name=="Overworld" ? "Minecraft" : name=="Spire" ? "Slay the Spire 2" : name=="Collective" ? "Communism" : name=="Sanctuary" ? "Tree House Sanctuary" : name=="Olympus" ? "EPIC: Mount Olympus" : name; }
         internal static bool TryColor(string text, out Color color)
         {
             color = Colors.White;
@@ -51,6 +51,15 @@ namespace Digitone
                 if(luminance>175)return Color.FromRgb(169,230,142);
                 if(luminance>120)return Color.FromRgb(124,164,130);
                 return Blend(forest,leaf,Math.Max(.03,(luminance-20)/360));
+            }
+            if(theme=="Olympus")
+            {
+                Color gold=Color.FromRgb(242,198,91),divine=Color.FromRgb(117,189,238),night=Color.FromRgb(17,21,46);
+                if(color==(Color)ColorConverter.ConvertFromString("#354233"))return Blend(night,gold,.24);
+                if(luminance>210)return Color.FromRgb(248,242,218);
+                if(luminance>175)return gold;
+                if(luminance>120)return Blend(divine,gold,.22);
+                return Blend(night,divine,Math.Max(.02,(luminance-20)/390));
             }
             Color paletteAccent = theme=="Overworld" ? Color.FromRgb(155,214,103) : theme=="Spire" ? Color.FromRgb(226,190,126) : Color.FromRgb(255,112,91);
             Color baseColor = theme=="Overworld" ? Color.FromRgb(24,30,22) : theme=="Spire" ? Color.FromRgb(26,20,35) : Color.FromRgb(35,15,18);
@@ -98,7 +107,7 @@ namespace Digitone
             name = name=="Green" ? "Overworld" : name=="Gold" ? "Spire" : name=="Monochrome" ? "Collective" : name;
             Data.ThemeName = Themes.Names.Contains(name) || name == "Custom" ? name : "Midnight";
             Themes.Apply(Window.Resources, Data.ThemeName, Data.CustomThemeColor, Data.AppearanceMode=="Light");
-            Window.Resources["ThemeDisplayFont"] = new FontFamily(Data.ThemeName=="Overworld" ? "Consolas" : Data.ThemeName=="Spire" ? "Georgia" : Data.ThemeName=="Sanctuary" ? "Segoe Print" : "Impact");
+            Window.Resources["ThemeDisplayFont"] = new FontFamily(Data.ThemeName=="Overworld" ? "Consolas" : Data.ThemeName=="Spire" ? "Georgia" : Data.ThemeName=="Sanctuary" ? "Segoe Print" : Data.ThemeName=="Olympus" ? "Palatino Linotype" : "Impact");
             Find<Canvas>("AmbientCanvas").Opacity=Data.ThemeName=="Custom" ? .42 : .70;
             LayoutAmbient();
             accent = Themes.Brush(Window, "C1D3A8"); dim = Themes.Brush(Window, "354233");
