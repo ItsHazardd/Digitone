@@ -80,7 +80,7 @@ namespace Digitone
                 bool stacked=h>w*.95;
                 double cellWidth=stacked?w:w/3, cellHeight=stacked?h/3:h;
                 string[] names={ "BASS", "MIDS", "TREBLE" };
-                string[] ranges={ "20–250 Hz", "250–4,000 Hz", "4,000–20,000 Hz" };
+                string[] ranges={ "20-250 Hz", "250-4,000 Hz", "4,000-20,000 Hz" };
                 for(int i=0;i<3;i++)
                 {
                     double x=stacked?w/2:w*(i+.5)/3, top=stacked?cellHeight*i:0;

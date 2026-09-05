@@ -82,7 +82,7 @@ namespace Digitone
         {
             Func<byte[],BitmapSource> decode=delegate(byte[] bytes){using(var stream=new MemoryStream(bytes)){var image=new BitmapImage();image.BeginInit();image.CacheOption=BitmapCacheOption.OnLoad;image.DecodePixelWidth=64;image.StreamSource=stream;image.EndInit();image.Freeze();return new FormatConvertedBitmap(image,PixelFormats.Bgra32,null,0);}};
             BitmapSource a=decode(first),b=decode(second);int aw=a.PixelWidth,ah=a.PixelHeight,bw=b.PixelWidth,bh=b.PixelHeight;var ap=new byte[aw*ah*4];var bp=new byte[bw*bh*4];a.CopyPixels(ap,aw*4,0);b.CopyPixels(bp,bw*4,0);double difference=0;int samples=0;
-            for(int y=0;y<16;y++)for(int x=0;x<16;x++){int ai=((y*(ah-1)/15)*aw+x*(aw-1)/15)*4,bi=((y*(bh-1)/15)*bw+x*(bw-1)/15)*4;for(int c=0;c<3;c++){difference+=Math.Abs(ap[ai+c]-bp[bi+c]);samples++;}}return difference/samples;
+            for(int y=0;y<16;y++)for(int x=0;x<16;x++){int firstIndex=((y*(ah-1)/15)*aw+x*(aw-1)/15)*4,secondIndex=((y*(bh-1)/15)*bw+x*(bw-1)/15)*4;for(int c=0;c<3;c++){difference+=Math.Abs(ap[firstIndex+c]-bp[secondIndex+c]);samples++;}}return difference/samples;
         }
         internal static string AudioHash(string path) { return Encoding.UTF8.GetString(Run("ffmpeg.exe", new[] { "-v", "error", "-nostdin", "-protocol_whitelist", "file,pipe", "-i", path, "-map", "0:a:0", "-c:a", "copy", "-f", "hash", "-hash", "sha256", "pipe:1" })).Trim(); }
         internal static void SaveArtwork(string path,byte[] cover)
@@ -129,6 +129,11 @@ namespace Digitone
                 File.Replace(temp, path, backup); return backup;
             }
             finally { if (File.Exists(temp)) File.Delete(temp); if (File.Exists(picture)) File.Delete(picture); }
+        }
+        internal static void SaveIdentity(Track edited)
+        {
+            string path=edited.Path;if(!CanEdit(path)||!File.Exists(path))throw new IOException("File editing supports available MP3, FLAC, and M4A files.");if(!AudioDownloader.ToolsReady)throw new IOException("FFmpeg tools are missing.");string extension=Path.GetExtension(path),token=Guid.NewGuid().ToString("N"),temp=Path.Combine(Path.GetDirectoryName(path),".digitone-identity-"+token+extension);long originalLength=new FileInfo(path).Length;DateTime originalWrite=File.GetLastWriteTimeUtc(path);
+            try{var args=new List<string>{"-v","error","-nostdin","-y","-protocol_whitelist","file,pipe","-i",path,"-map","0","-map_metadata","0","-c","copy","-metadata","title="+(edited.SongTitle??""),"-metadata","artist="+(edited.Artist??"")};if(extension.Equals(".mp3",StringComparison.OrdinalIgnoreCase))args.AddRange(new[]{"-id3v2_version","3"});args.Add(temp);Run("ffmpeg.exe",args);string originalHash=AudioHash(path),editedHash=AudioHash(temp);if(String.IsNullOrEmpty(originalHash)||originalHash!=editedHash)throw new IOException("Audio verification failed. Your original file was not replaced.");var verified=new Track{Path=temp};ReadInto(verified);if(!String.Equals(edited.SongTitle??"",verified.SongTitle??"",StringComparison.Ordinal))throw new IOException("This file format did not preserve SongTitle. Your original file was not replaced.");if(!String.Equals(edited.Artist??"",verified.Artist??"",StringComparison.Ordinal))throw new IOException("This file format did not preserve Artist. Your original file was not replaced.");if(new FileInfo(path).Length!=originalLength||File.GetLastWriteTimeUtc(path)!=originalWrite)throw new IOException("The file changed while editing. Save was stopped to protect it.");File.Replace(temp,path,null);}finally{if(File.Exists(temp))File.Delete(temp);}
         }
     }
     internal sealed class SongEditor : Window

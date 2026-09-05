@@ -87,7 +87,7 @@ namespace Digitone
     public static class LocalFiles
     {
         public static readonly string[] Extensions = { ".mp3", ".wav", ".flac", ".m4a", ".aac", ".wma", ".aif", ".aiff" };
-        // Reject network paths before any filesystem operation. Reparse points could escape a chosen folder.
+
         public static bool IsLocal(string path)
         {
             if (String.IsNullOrWhiteSpace(path) || path.Length < 3 || !Char.IsLetter(path[0]) || path[1] != ':' || (path[2] != '\\' && path[2] != '/')) return false;
@@ -169,7 +169,7 @@ namespace Digitone
     }
     public static class WaveReader
     {
-        // Bounded sampling for a genuine amplitude waveform, without loading the entire song into RAM.
+
         public static double[] Read(string path, int count)
         {
             if (!LocalFiles.IsLocal(path) || !String.Equals(System.IO.Path.GetExtension(path), ".wav", StringComparison.OrdinalIgnoreCase)) return null;
@@ -579,8 +579,8 @@ namespace Digitone
         internal void SetLibraryArtworkBusy(bool busy)
         {
             var pane=Find<Grid>("LibraryPane");
-            // Disabling a WPF ListBox lets the Windows disabled-control theme paint its
-            // default white surface. Block input without changing the themed visuals.
+
+
             pane.IsHitTestVisible=!busy;
             pane.Cursor=busy?Cursors.Wait:null;
         }

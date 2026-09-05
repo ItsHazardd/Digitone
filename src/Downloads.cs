@@ -23,7 +23,7 @@ namespace Digitone
         internal int Errors;
         internal readonly List<string> Files = new List<string>();
     }
-    // Owns the entire subprocess tree, including conversion and JavaScript helpers.
+
     internal sealed class ProcessJob : IDisposable
     {
         [StructLayout(LayoutKind.Sequential)] private struct BasicLimits { public long ProcessTime, JobTime; public uint Flags; public UIntPtr MinWorkingSet, MaxWorkingSet; public uint ActiveProcessLimit; public UIntPtr Affinity; public uint Priority, Scheduling; }
@@ -37,7 +37,7 @@ namespace Digitone
         public ProcessJob()
         {
             handle = CreateJobObject(IntPtr.Zero, null);
-            var limits = new ExtendedLimits(); limits.Basic.Flags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            var limits = new ExtendedLimits(); limits.Basic.Flags = 0x2000;
             if (handle == IntPtr.Zero || !SetInformationJobObject(handle, 9, ref limits, (uint)Marshal.SizeOf(limits))) { Dispose(); throw new InvalidOperationException("Windows could not create a cancellable download process."); }
         }
         internal void Attach(Process process) { if (!AssignProcessToJobObject(handle, process.Handle)) { try { process.Kill(); } catch { } throw new InvalidOperationException("Windows could not isolate the download process. Download stopped."); } }
@@ -67,7 +67,7 @@ namespace Digitone
             if (!LocalFiles.IsLocal(path)) throw new ArgumentException("The playlist folder cannot be a link or network location.");
             Directory.CreateDirectory(path); return path;
         }
-        // Windows CRT quoting, not shell quoting. No shell or interpolated command is used.
+
         internal static string Quote(string input)
         {
             var output = new StringBuilder("\""); int slashes = 0;
@@ -181,13 +181,13 @@ namespace Digitone
     }
     internal sealed class DownloadJob
     {
-        internal string Url,Folder,Name,State="Pending",Error;internal bool EntirePlaylist,CreatePlaylist;internal Playlist Destination;internal DownloadResult Result;internal readonly TaskCompletionSource<bool> Completion=new TaskCompletionSource<bool>();
+        internal string Url,Folder,Name,State="Pending",Error,MetadataTitle,MetadataArtist;internal bool EntirePlaylist,CreatePlaylist;internal Playlist Destination;internal DownloadResult Result;internal readonly TaskCompletionSource<bool> Completion=new TaskCompletionSource<bool>();
         public string Display{get{return State+" · "+(EntirePlaylist?"Playlist · ":"")+(Destination!=null?Destination.Name:CreatePlaylist?Name:"All music")+" · "+Url;}}
-        internal DownloadJob Copy(){return new DownloadJob{Url=Url,Folder=Folder,Name=Name,EntirePlaylist=EntirePlaylist,CreatePlaylist=CreatePlaylist,Destination=Destination};}
+        internal DownloadJob Copy(){return new DownloadJob{Url=Url,Folder=Folder,Name=Name,EntirePlaylist=EntirePlaylist,CreatePlaylist=CreatePlaylist,Destination=Destination,MetadataTitle=MetadataTitle,MetadataArtist=MetadataArtist};}
     }
     internal sealed class DownloadController
     {
-        private readonly PlayerApp player;private readonly Action save;private readonly List<DownloadJob> jobs=new List<DownloadJob>();private readonly Queue<DownloadJob> pending=new Queue<DownloadJob>();private AudioDownloader downloader;private DownloadJob current;private readonly YouTubeBrowser youtube;private Playlist selectedDestination;private bool createDestination,refreshingDestinations,pumping;
+        private readonly PlayerApp player;private readonly Action save;private readonly List<DownloadJob> jobs=new List<DownloadJob>();private readonly Queue<DownloadJob> pending=new Queue<DownloadJob>();private AudioDownloader downloader;private DownloadJob current;private readonly YouTubeBrowser youtube;private readonly SpotifyImportWindow spotify;private Playlist selectedDestination;private bool createDestination,refreshingDestinations,pumping;
         internal bool Busy{get{return current!=null;}}internal Task ActiveTask{get;private set;}
         internal DownloadController(PlayerApp player,Action save)
         {
@@ -196,7 +196,7 @@ namespace Digitone
             player.Find<Button>("DownloadStart").Click+=delegate{ActiveTask=EnqueueFromForm();};player.Find<Button>("DownloadCancel").Click+=delegate{Cancel();};player.Find<Button>("DownloadExistingMode").Click+=delegate{SetMode(false);};player.Find<Button>("DownloadNewMode").Click+=delegate{SetMode(true);};
             player.Find<ComboBox>("DownloadPlaylistTarget").SelectionChanged+=delegate{if(!refreshingDestinations){var target=player.Find<ComboBox>("DownloadPlaylistTarget").SelectedItem as DownloadTarget;selectedDestination=target==null?null:target.Playlist;}UpdateTargetControls();};player.Find<CheckBox>("DownloadPlaylist").Click+=delegate{UpdateTargetControls();};
             player.Find<Button>("DownloadRetry").Click+=delegate{RetrySelected();};player.Find<Button>("DownloadJobCancel").Click+=delegate{CancelSelected();};player.Find<Button>("DownloadOpenFolder").Click+=delegate{OpenSelectedFolder();};player.Find<Button>("DownloadDetailsToggle").Click+=delegate{var log=player.Find<TextBox>("DownloadLog");bool show=log.Visibility!=Visibility.Visible;log.Visibility=show?Visibility.Visible:Visibility.Collapsed;player.Find<Button>("DownloadDetailsToggle").Content=show?"Hide details":"Show details";};
-            youtube=new YouTubeBrowser(player,UseYouTubePage);RefreshTools();RefreshPlaylists();SetMode(false);RefreshJobs();
+            youtube=new YouTubeBrowser(player,UseYouTubePage);spotify=new SpotifyImportWindow(player,this,save);player.Find<Button>("SpotifyImportButton").Click+=delegate{spotify.Show();};RefreshTools();RefreshPlaylists();SetMode(false);RefreshJobs();
         }
         internal void RefreshPlaylists(){var box=player.Find<ComboBox>("DownloadPlaylistTarget");var targets=new List<DownloadTarget>{new DownloadTarget{Label="All music only"}};targets.AddRange(player.Data.Playlists.OrderBy(p=>p.Name,StringComparer.CurrentCultureIgnoreCase).Select(p=>new DownloadTarget{Label=p.Name,Playlist=p}));refreshingDestinations=true;box.ItemsSource=targets;box.SelectedItem=selectedDestination==null?targets[0]:targets.FirstOrDefault(t=>t.Playlist==selectedDestination)??targets[0];refreshingDestinations=false;UpdateTargetControls();youtube.RefreshPlaylists(player.Data.Playlists);}
         internal void RefreshTools(){player.Find<TextBlock>("DownloadToolsStatus").Text=AudioDownloader.ToolsReady?"yt-dlp + FFmpeg ready":"Download tools missing · run Install-DownloadTools.ps1.";}
@@ -205,13 +205,13 @@ namespace Digitone
         private void Status(string text){player.Find<TextBlock>("DownloadStatus").Text=text;}
         internal void Cancel(){if(downloader!=null&&current!=null){current.State="Cancelling";Status("Cancelling active download and conversion…");downloader.Cancel();RefreshJobs();}}
         private Task EnqueueFromForm(){return Enqueue(player.Find<TextBox>("DownloadUrl").Text.Trim(),createDestination&&player.Find<CheckBox>("DownloadPlaylist").IsChecked==true,createDestination?player.Find<TextBox>("DownloadPlaylistName").Text.Trim():null,createDestination?null:selectedDestination);}
-        internal Task Enqueue(string url,bool entirePlaylist,string name,Playlist destination)
+        internal Task Enqueue(string url,bool entirePlaylist,string name,Playlist destination,string metadataTitle=null,string metadataArtist=null)
         {
-            string root=player.Data.DownloadFolder;if(!AudioDownloader.ValidUrl(url)){Status("Paste an HTTP or HTTPS link first.");return Task.FromResult(false);}if(!LocalFiles.IsLocal(root)||!Directory.Exists(root)){Status("Choose an existing local folder first.");return Task.FromResult(false);}var job=new DownloadJob{Url=url,EntirePlaylist=entirePlaylist,Name=name,Destination=destination,CreatePlaylist=destination==null&&(!String.IsNullOrWhiteSpace(name)||entirePlaylist)};try{job.Folder=job.CreatePlaylist||destination!=null?AudioDownloader.PlaylistFolder(root,destination!=null?destination.Name:name):root;}catch(Exception e){Status(e.Message);return Task.FromResult(false);}jobs.Add(job);pending.Enqueue(job);RefreshJobs();Status("Added to download queue · "+pending.Count+" waiting.");if(!pumping){pumping=true;var ignored=Pump();}return job.Completion.Task;
+            string root=player.Data.DownloadFolder;if(!AudioDownloader.ValidUrl(url)){Status("Paste an HTTP or HTTPS link first.");return Task.FromResult(false);}if(!LocalFiles.IsLocal(root)||!Directory.Exists(root)){Status("Choose an existing local folder first.");return Task.FromResult(false);}var job=new DownloadJob{Url=url,EntirePlaylist=entirePlaylist,Name=name,Destination=destination,MetadataTitle=metadataTitle,MetadataArtist=metadataArtist,CreatePlaylist=destination==null&&(!String.IsNullOrWhiteSpace(name)||entirePlaylist)};try{job.Folder=job.CreatePlaylist||destination!=null?AudioDownloader.PlaylistFolder(root,destination!=null?destination.Name:name):root;}catch(Exception e){Status(e.Message);return Task.FromResult(false);}jobs.Add(job);pending.Enqueue(job);RefreshJobs();Status("Added to download queue · "+pending.Count+" waiting.");if(!pumping){pumping=true;var ignored=Pump();}return job.Completion.Task;
         }
         private async Task Pump()
         {
-            while(pending.Count>0){current=pending.Dequeue();current.State="Downloading";RefreshJobs();player.Find<Button>("DownloadCancel").IsEnabled=true;downloader=new AudioDownloader();try{current.Result=await downloader.Run(current.Url,current.Folder,Output,current.EntirePlaylist);if(current.Result.Files.Count>0){await player.Import(current.Result.Files.ToArray(),true);var imported=current.Result.Files.Select(p=>player.Data.Tracks.FirstOrDefault(t=>String.Equals(t.Path,p,StringComparison.OrdinalIgnoreCase))).Where(t=>t!=null).ToList();if(current.CreatePlaylist||current.Destination!=null)player.AddDownloadedTracks(current.Name,current.Folder,imported,current.Destination);current.State=current.Result.Cancelled?"Cancelled · finished files kept":current.Result.Errors>0||current.Result.ExitCode!=0&&current.Result.ExitCode!=101?"Completed with warnings":"Completed";Status(current.Result.Files.Count+" tracks finished · "+current.State+".");}else current.State=current.Result.Cancelled?"Cancelled":"Failed";}catch(Exception e){current.Error=e.Message;current.State="Failed";Status("Download failed: "+e.Message);}finally{var finished=current;current=null;downloader=null;player.Find<Button>("DownloadCancel").IsEnabled=false;RefreshPlaylists();RefreshJobs();finished.Completion.TrySetResult(finished.State.StartsWith("Completed"));}}
+            while(pending.Count>0){current=pending.Dequeue();current.State="Downloading";RefreshJobs();player.Find<Button>("DownloadCancel").IsEnabled=true;downloader=new AudioDownloader();try{current.Result=await downloader.Run(current.Url,current.Folder,Output,current.EntirePlaylist);if(current.Result.Files.Count>0){if(current.Result.Files.Count==1&&!String.IsNullOrWhiteSpace(current.MetadataTitle)&&SongTags.CanEdit(current.Result.Files[0]))await Task.Run(delegate{var tagged=new Track{Path=current.Result.Files[0]};SongTags.ReadInto(tagged);tagged.SongTitle=current.MetadataTitle;tagged.Artist=current.MetadataArtist??"";SongTags.SaveIdentity(tagged);});await player.Import(current.Result.Files.ToArray(),true);var imported=current.Result.Files.Select(p=>player.Data.Tracks.FirstOrDefault(t=>String.Equals(t.Path,p,StringComparison.OrdinalIgnoreCase))).Where(t=>t!=null).ToList();if(current.CreatePlaylist||current.Destination!=null)player.AddDownloadedTracks(current.Name,current.Folder,imported,current.Destination);current.State=current.Result.Cancelled?"Cancelled · finished files kept":current.Result.Errors>0||current.Result.ExitCode!=0&&current.Result.ExitCode!=101?"Completed with warnings":"Completed";Status(current.Result.Files.Count+" tracks finished · "+current.State+".");}else current.State=current.Result.Cancelled?"Cancelled":"Failed";}catch(Exception e){current.Error=e.Message;current.State="Failed";Status("Download failed: "+e.Message);}finally{var finished=current;current=null;downloader=null;player.Find<Button>("DownloadCancel").IsEnabled=false;RefreshPlaylists();RefreshJobs();finished.Completion.TrySetResult(finished.State.StartsWith("Completed"));}}
             pumping=false;Status(jobs.Count(j=>j.State.StartsWith("Completed"))+" completed · "+jobs.Count(j=>j.State=="Failed")+" failed · queue finished.");
         }
         private void Output(string line){player.Window.Dispatcher.BeginInvoke(new Action(delegate{if(line.StartsWith("STILL_PROGRESS:",StringComparison.Ordinal)){double percent;if(Double.TryParse(line.Substring(15).Trim().TrimEnd('%'),NumberStyles.Float,CultureInfo.InvariantCulture,out percent)){player.Find<ProgressBar>("DownloadProgress").IsIndeterminate=false;player.Find<ProgressBar>("DownloadProgress").Value=Math.Max(0,Math.Min(100,percent));Status("Downloading audio · "+percent.ToString("0",CultureInfo.InvariantCulture)+"%");}return;}if(line.StartsWith("STILL_FILE:",StringComparison.Ordinal))return;var log=player.Find<TextBox>("DownloadLog");string next=log.Text+(line.Length>1500?line.Substring(0,1500):line)+Environment.NewLine;log.Text=next.Length>10000?next.Substring(next.Length-10000):next;log.ScrollToEnd();}));}

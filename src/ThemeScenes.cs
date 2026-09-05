@@ -9,7 +9,7 @@ using System.Windows.Shapes;
 
 namespace Digitone
 {
-    // Original vector scenes plus the user-supplied, deterministically processed sanctuary plant.
+
     internal static class ThemeScenes
     {
         private static ImageSource sanctuaryPlant;

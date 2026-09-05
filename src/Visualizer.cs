@@ -17,7 +17,7 @@ namespace Digitone
 {
     internal static class WaveformDecoder
     {
-        // Streaming PCM analysis: only one peak per 1,024 samples is retained in memory.
+
         internal static double[] Decode(string path, int count, CancellationToken cancellation)
         {
             if (!LocalFiles.IsLocal(path) || !File.Exists(path)) return null;
@@ -32,7 +32,7 @@ namespace Digitone
             using (var process = new Process { StartInfo = info })
             {
                 process.Start(); job.Attach(process);
-                // Closing the job unblocks PCM reads and terminates helper processes immediately.
+
                 using (cancellation.Register(delegate { job.Dispose(); }))
                 using (var timeout = new Timer(delegate { job.Dispose(); }, null, 120000, Timeout.Infinite))
                 {

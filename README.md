@@ -1,14 +1,12 @@
 # Digitone
 
-Digitone is a local-first Windows music player with animated themes, playlists, lyrics, artwork tools, visualizers, queue management, and high-quality WASAPI playback.
+Digitone is a local-first Windows music player with animated themes, playlists, lyrics, artwork tools, visualizers, queue management, Spotify share-link imports, YouTube audio downloads, and high-quality WASAPI playback.
 
-Built by GEMMA in conjunction with Hazzy: 70% GEMMA, 30% Hazzy.
-
-Current release: 4.0.1 for Windows x64.
+Current release: 5.0.5 for Windows x64.
 
 ## Privacy
 
-Digitone stores its library and settings beside the application. The repository and release packages never include a user's music, library database, lyrics, artwork, playlists, or personal folders.
+Digitone stores its library and settings beside the application. The repository and release packages never include a user's music, library database, lyrics, artwork, playlists, browser profile, or personal folders.
 
 ## Building
 
@@ -32,6 +30,10 @@ A release build excludes the test harness:
 ```
 
 Third-party DLLs used at build time are included with their license notices. Download-tool executables and personal runtime data are intentionally excluded from source control.
+
+## Support
+
+Digitone will always be free. Optional tips can be made through [Ko-fi](https://ko-fi.com/itshazzy).
 
 ## License
 

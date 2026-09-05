@@ -10,6 +10,7 @@ $arguments += Join-Path $PSScriptRoot 'Digitone.cs'
 if (!$Release) { $arguments += Join-Path $PSScriptRoot 'SelfTest.cs' } else { $arguments += '/define:RELEASE'; $arguments += '/platform:x64' }
 $arguments += Join-Path $PSScriptRoot 'FirstRun.cs'
 $arguments += Join-Path $PSScriptRoot 'Downloads.cs'
+$arguments += Join-Path $PSScriptRoot 'SpotifyImport.cs'
 $arguments += Join-Path $PSScriptRoot 'SongTags.cs'
 $arguments += Join-Path $PSScriptRoot 'Visualizer.cs'
 $arguments += Join-Path $PSScriptRoot 'PlaylistFiles.cs'
@@ -36,6 +37,7 @@ if (!$Release) { $arguments += Join-Path $PSScriptRoot 'CoverBrowserTest.cs' }
 $arguments += '/win32icon:' + $IconPath
 $arguments += '/resource:' + $IconPath + ',Digitone.ico'
 $arguments += '/resource:' + (Join-Path $PSScriptRoot 'DigitoneMark.png') + ',DigitoneMark.png'
+$arguments += '/resource:' + (Join-Path $PSScriptRoot 'HazzySignature.png') + ',HazzySignature.png'
 $arguments += '/resource:' + (Join-Path $PSScriptRoot 'SanctuaryPlant.png') + ',SanctuaryPlant.png'
 $arguments += '/resource:' + (Join-Path $PSScriptRoot 'CoverIntegration.js') + ',CoverIntegration.js'
 $arguments += '/reference:' + (Join-Path $PSScriptRoot 'Microsoft.Web.WebView2.Core.dll')

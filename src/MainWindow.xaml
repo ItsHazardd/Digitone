@@ -606,6 +606,7 @@
             <StackPanel Grid.Row="2" Margin="0,0,0,20">
               <StackPanel Orientation="Horizontal">
                 <Button x:Name="YouTubeToggle" Content="▶  Open YouTube viewer" Background="{DynamicResource BC1D3A8}" Foreground="{DynamicResource B20291E}" />
+                <Button x:Name="SpotifyImportButton" Content="♫  Spotify import assistant" />
                 <TextBlock Text="Browse recommendations or sign in inside a separate Digitone window." Foreground="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" />
               </StackPanel>
             </StackPanel>

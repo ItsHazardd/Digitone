@@ -51,7 +51,7 @@ namespace Digitone
                 Browser.CoreWebView2.NewWindowRequested += delegate(object sender,CoreWebView2NewWindowRequestedEventArgs e) { e.Handled = true; if (e.IsUserInitiated && e.Uri == "https://covers.musichoarders.xyz/") { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://covers.musichoarders.xyz/") { UseShellExecute = true }); } catch (Exception error) { status.Text = "Could not open your browser: " + error.Message; } } };
                 Browser.CoreWebView2.NavigationStarting += delegate(object sender,CoreWebView2NavigationStartingEventArgs e) { if (!CoverSearch.TrustedPage(e.Uri)) e.Cancel = true; };
                 Browser.CoreWebView2.WebMessageReceived += async delegate(object sender,CoreWebView2WebMessageReceivedEventArgs e) { if (CoverSearch.TrustedPage(e.Source)) await Receive(e.WebMessageAsJson); };
-                // COV's supported browser integration sends its selected cover with window.postMessage.
+
                 using (var script = new StreamReader(System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("CoverIntegration.js"))) await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(script.ReadToEnd());
                 Browser.CoreWebView2.NavigationCompleted += delegate(object sender,CoreWebView2NavigationCompletedEventArgs e) { if (!closed) status.Text = e.IsSuccess ? "COV · Choose a cover above, then Use cover." : "COV could not load. Close this window and try again when connected."; };
                 Browser.CoreWebView2.Navigate(CoverSearch.Address(artist));
