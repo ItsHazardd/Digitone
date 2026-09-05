@@ -16,9 +16,13 @@ namespace Digitone
         private LiveWaveSource liveWave;
         private readonly AudioScene audioScene = new AudioScene();
         private readonly AudioScene mainScene = new AudioScene { Mode="Spectrum" };
+        private readonly System.Diagnostics.Stopwatch prideVisualizerClock = System.Diagnostics.Stopwatch.StartNew();
+        private readonly TranslateTransform prideVisualizerShift = new TranslateTransform();
+        private LinearGradientBrush prideVisualizerRainbow;
         internal static readonly string[] VisualizerModes = { "Waveform", "Spectrum", "Radial", "Prism", "Pulse" };
         internal string ActiveVisualizer { get { return Data.VisualizerMode ?? "Waveform"; } }
         internal int SceneRenderCount { get { return audioScene.RenderCount; } }
+        internal bool PrideVisualizerActive { get { return audioScene.Rainbow&&mainScene.Rainbow&&smallTrace.Stroke is LinearGradientBrush&&expandedTrace.Stroke is LinearGradientBrush; } }
         private void SetMainVisualizer(string mode)
         {
             Data.MainVisualizerMode=mode=="Spectrum"?"Spectrum":mode=="Off"?"Off":"Waveform";
@@ -43,7 +47,7 @@ namespace Digitone
         internal void ApplyNeon()
         {
             Effect glow=NeonGlow();smallTrace.Effect=glow;expandedTrace.Effect=glow;expandedGlow.Effect=glow;audioScene.Effect=glow;Find<Canvas>("MainSpectrum").Effect=glow;Find<Grid>("RecordDisc").Effect=glow;Find<Slider>("Seek").Effect=glow;Find<Slider>("Volume").Effect=glow;Find<Button>("PlayButton").Effect=glow;
-            foreach(string name in new[]{"AmbientRing","AmbientOrbit","AmbientBand","AmbientDots","AmbientShard","AmbientSteps"})Find<FrameworkElement>(name).Effect=glow;if(themeGeometry!=null)themeGeometry.Effect=glow;
+            foreach(string name in new[]{"AmbientRing","AmbientOrbit","AmbientBand","AmbientDots","AmbientShard","AmbientSteps"})Find<FrameworkElement>(name).Effect=glow;if(themeGeometry!=null)themeGeometry.Effect=Data.ThemeName=="Pride"?null:glow;
             foreach(string name in new[]{"LibraryButton","FavoritesButton","DownloadsButton","PlaylistsButton","VisualizerButton","MainSpectrumButton","MainVisualizerOffButton"}){var button=Find<Button>(name);var brush=button.BorderBrush as SolidColorBrush;button.Effect=Data.NeonEnabled&&brush!=null&&brush.Color.A>0?glow:null;}
         }
         private double[] lastWave;
@@ -103,9 +107,10 @@ namespace Digitone
         }
         private void RefreshLiveTheme()
         {
-            smallTrace.Stroke = accent; expandedTrace.Stroke = accent; expandedGlow.Stroke = accent;
+            Brush liveBrush=Data.ThemeName=="Pride"?PrideVisualizerBrush():accent;smallTrace.Stroke = liveBrush; expandedTrace.Stroke = liveBrush; expandedGlow.Stroke = liveBrush;
             audioScene.Accent=accent;
             mainScene.Accent=accent;
+            audioScene.Rainbow=Data.ThemeName=="Pride";mainScene.Rainbow=Data.ThemeName=="Pride";
             foreach(string mode in VisualizerModes) Find<Button>("Mode"+mode).BorderBrush=mode==ActiveVisualizer?accent:Brushes.Transparent;
             LayoutExpanded(); DrawLiveWave(lastWave);
         }
@@ -134,8 +139,10 @@ namespace Digitone
             for (int i = 0; i < count; i++) points.Add(new Point(width * i / (count - 1), height * .5 - (wave == null ? 0 : wave[i]) * height * .43));
             points.Freeze(); return points;
         }
+        private Brush PrideVisualizerBrush(){if(prideVisualizerRainbow==null){Color[] colors={Color.FromRgb(226,58,50),Color.FromRgb(243,152,45),Color.FromRgb(255,223,59),Color.FromRgb(85,189,89),Color.FromRgb(74,146,237),Color.FromRgb(155,77,202)};prideVisualizerRainbow=new LinearGradientBrush{StartPoint=new Point(0,0),EndPoint=new Point(.5,0),SpreadMethod=GradientSpreadMethod.Repeat,RelativeTransform=prideVisualizerShift};for(int i=0;i<colors.Length;i++)prideVisualizerRainbow.GradientStops.Add(new GradientStop(colors[i],i/(double)(colors.Length-1)));}prideVisualizerShift.X=(prideVisualizerClock.Elapsed.TotalSeconds*.22)%1;return prideVisualizerRainbow;}
         private void DrawLiveWave(double[] wave)
         {
+            if(Data.ThemeName=="Pride"){Brush rainbow=PrideVisualizerBrush();smallTrace.Stroke=rainbow;expandedTrace.Stroke=rainbow;expandedGlow.Stroke=rainbow;}
             var small = Find<Canvas>("Waveform");
             if (Find<Grid>("ExpandedView").Visibility != Visibility.Visible && (small.IsVisible || wave == null)) smallTrace.Points = TracePoints(wave, small.ActualWidth, small.ActualHeight);
             if(Find<Canvas>("MainSpectrum").IsVisible){ var c=Find<Canvas>("MainSpectrum"); mainScene.Width=c.ActualWidth; mainScene.Height=c.ActualHeight; mainScene.SetFrame(wave); }

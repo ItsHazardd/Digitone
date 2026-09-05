@@ -3,7 +3,7 @@ namespace Digitone
     internal static class AppInfo
     {
 
-        internal const string Version = "5.0.5";
+        internal const string Version = "5.3.5";
         internal const string Changelog =
 @"VERSION 5 · CURRENT RELEASE
 
@@ -22,7 +22,11 @@ SETTINGS AND SUPPORT
 
 UPDATES
 • Removed feature spoilers and release notes from automatic update prompts.
-• Approved updates continue to preserve personal data while replacing program files.";
+• Approved updates continue to preserve personal data while replacing program files.
+
+APPEARANCE
+• Improved Tree House Sanctuary text contrast in light and dark modes.
+• Added softly animated lo-fi string lights with stronger glow in Neon mode.";
 
         internal const string Release4Changelog =
 @"VERSION 4 · RELEASE HISTORY

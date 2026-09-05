@@ -13,7 +13,12 @@ namespace Digitone
         internal double[] BandLevels { get { return (double[])levels.Clone(); } }
         internal string Mode = "Spectrum";
         internal Brush Accent = Brushes.White;
+        internal bool Rainbow;
         internal int RenderCount;
+        private static readonly Color[] PrideColors={Color.FromRgb(226,58,50),Color.FromRgb(243,152,45),Color.FromRgb(255,223,59),Color.FromRgb(85,189,89),Color.FromRgb(74,146,237),Color.FromRgb(155,77,202)};
+        private static readonly Brush[] PrideBrushes=CreatePrideBrushes();
+        private readonly TranslateTransform rainbowShift=new TranslateTransform();
+        private readonly LinearGradientBrush rainbowBrush;
         private static readonly double[,] Cos = new double[32,384], Sin = new double[32,384];
         static AudioScene()
         {
@@ -24,6 +29,11 @@ namespace Digitone
                 Cos[b,i] = Math.Cos(phase)*window; Sin[b,i] = Math.Sin(phase)*window;
             }
         }
+        internal AudioScene()
+        {
+            rainbowBrush=new LinearGradientBrush{StartPoint=new Point(0,0),EndPoint=new Point(.5,0),SpreadMethod=GradientSpreadMethod.Repeat,RelativeTransform=rainbowShift};for(int i=0;i<PrideColors.Length;i++)rainbowBrush.GradientStops.Add(new GradientStop(PrideColors[i],i/(double)(PrideColors.Length-1)));
+        }
+        private static Brush[] CreatePrideBrushes(){var brushes=new Brush[PrideColors.Length];for(int i=0;i<brushes.Length;i++){var brush=new SolidColorBrush(PrideColors[i]);brush.Freeze();brushes[i]=brush;}return brushes;}
         internal void SetFrame(double[] frame, double[] bands = null)
         {
             samples = frame;
@@ -42,12 +52,14 @@ namespace Digitone
             using(var g=shape.Open()) { g.BeginFigure(points[0],false,close); for(int i=1;i<points.Length;i++) g.LineTo(points[i],true,false); }
             shape.Freeze(); return shape;
         }
+        private Brush MovingRainbow(){rainbowShift.X=(clock.Elapsed.TotalSeconds*.22)%1;return rainbowBrush;}
+        private Brush PrideBand(int index){return PrideBrushes[(index+(int)(clock.Elapsed.TotalSeconds*7))%PrideBrushes.Length];}
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc); RenderCount++;
             double w=ActualWidth,h=ActualHeight; if(w<1 || h<1) return;
             dc.PushClip(new RectangleGeometry(new Rect(0,0,w,h)));
-            var pen = new Pen(Accent,2); double energy=0;
+            Brush liveAccent=Rainbow?MovingRainbow():Accent;var pen = new Pen(liveAccent,2); double energy=0;
             if(samples!=null) { foreach(double n in samples) energy+=n*n; energy=Math.Min(1,Math.Sqrt(energy/samples.Length)*3); }
             if(Mode=="Spectrum")
             {
@@ -58,7 +70,7 @@ namespace Digitone
                     if(samples!=null) for(int i=0;i<Math.Min(384,samples.Length);i++) { real+=samples[i]*Cos[b,i]; imag+=samples[i]*Sin[b,i]; }
                     double level=Math.Min(1,Math.Sqrt(real*real+imag*imag)/384*12);
                     double bar=Math.Max(2,level*baseline*.85),step=w/32;
-                    dc.DrawRoundedRectangle(Accent,null,new Rect(b*step+step*.14,baseline-bar,step*.72,bar),2,2);
+                    dc.DrawRoundedRectangle(Rainbow?PrideBand(b/5):Accent,null,new Rect(b*step+step*.14,baseline-bar,step*.72,bar),2,2);
                 }
                 SpectrumAxis(dc,w,h,baseline);
             }
@@ -67,13 +79,13 @@ namespace Digitone
                 var points=new Point[192]; double radius=Math.Min(w,h)*.28;
                 for(int i=0;i<points.Length;i++) { double a=i*2*Math.PI/points.Length; double n=samples==null?0:samples[i*samples.Length/points.Length]; double r=radius+n*radius*.65; points[i]=new Point(w/2+Math.Cos(a)*r,h/2+Math.Sin(a)*r); }
                 dc.DrawGeometry(null,pen,Line(points,true));
-                dc.PushOpacity(.2); dc.DrawEllipse(null,new Pen(Accent,1),new Point(w/2,h/2),radius*.78,radius*.78); dc.Pop();
+                dc.PushOpacity(.2); dc.DrawEllipse(null,new Pen(liveAccent,1),new Point(w/2,h/2),radius*.78,radius*.78); dc.Pop();
             }
             else if(Mode=="Prism")
             {
                 double span=Math.Max(1,Math.Min(w,h-38));
-                for(int i=2;i>=0;i--) { double radius=span*(.12+i*.095+levels[i]*.07); dc.PushOpacity(.9-i*.18); dc.DrawGeometry(null,new Pen(Accent,2),Diamond(w/2,(h-30)/2,radius)); dc.Pop(); }
-                dc.PushOpacity(.12+energy*.16); dc.DrawGeometry(Accent,null,Diamond(w/2,(h-30)/2,span*.06)); dc.Pop();
+                for(int i=2;i>=0;i--) { double radius=span*(.12+i*.095+levels[i]*.07); dc.PushOpacity(.9-i*.18); dc.DrawGeometry(null,new Pen(Rainbow?PrideBand(i*2):Accent,2),Diamond(w/2,(h-30)/2,radius)); dc.Pop(); }
+                dc.PushOpacity(.12+energy*.16); dc.DrawGeometry(liveAccent,null,Diamond(w/2,(h-30)/2,span*.06)); dc.Pop();
             }
             else
             {
@@ -87,11 +99,12 @@ namespace Digitone
                     double y=top+(cellHeight-42)/2;
                     double room=Math.Max(1,Math.Min(cellWidth*.42,(cellHeight-52)*.45));
                     double radius=room*(.55+levels[i]*.36);
-                    dc.PushOpacity(.18); dc.DrawEllipse(null,new Pen(Accent,1),new Point(x,y),room,room); dc.Pop();
-                    dc.DrawEllipse(null,new Pen(Accent,2.5),new Point(x,y),radius,radius);
-                    dc.PushOpacity(.24+levels[i]*.5); dc.DrawEllipse(null,new Pen(Accent,1),new Point(x,y),radius*.78,radius*.78); dc.Pop();
-                    dc.PushOpacity(.12+levels[i]*.3); dc.DrawGeometry(Accent,null,Diamond(x,y,room*.18)); dc.Pop();
-                    var label=new FormattedText(names[i]+"\n"+ranges[i],System.Globalization.CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,Accent,VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment=TextAlignment.Center };
+                    Brush bandAccent=Rainbow?PrideBand(i*2):Accent;
+                    dc.PushOpacity(.18); dc.DrawEllipse(null,new Pen(bandAccent,1),new Point(x,y),room,room); dc.Pop();
+                    dc.DrawEllipse(null,new Pen(bandAccent,2.5),new Point(x,y),radius,radius);
+                    dc.PushOpacity(.24+levels[i]*.5); dc.DrawEllipse(null,new Pen(bandAccent,1),new Point(x,y),radius*.78,radius*.78); dc.Pop();
+                    dc.PushOpacity(.12+levels[i]*.3); dc.DrawGeometry(bandAccent,null,Diamond(x,y,room*.18)); dc.Pop();
+                    var label=new FormattedText(names[i]+"\n"+ranges[i],System.Globalization.CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,bandAccent,VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment=TextAlignment.Center };
                     dc.DrawText(label,new Point(x,top+cellHeight-35));
                 }
             }

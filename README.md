@@ -2,7 +2,7 @@
 
 Digitone is a local-first Windows music player with animated themes, playlists, lyrics, artwork tools, visualizers, queue management, Spotify share-link imports, YouTube audio downloads, and high-quality WASAPI playback.
 
-Current release: 5.0.5 for Windows x64.
+Current release: 5.3.5 for Windows x64.
 
 ## Privacy
 

@@ -57,10 +57,51 @@ namespace Digitone
             Place(c,new TextBlock { Text=(index+1).ToString(),FontFamily=new FontFamily("Georgia"),FontSize=19,Foreground=Ink("#FFF1CC") },0,-7);
             c.RenderTransform=new RotateTransform((index-1)*15,62,184); return c;
         }
+        private static Canvas PrideFlag(int index)
+        {
+            var f=new Canvas{Name="PrideFlagArt"+index,Width=82,Height=52,ClipToBounds=true};
+            string[][] stripes={
+                new[]{"#D52D1E","#EF7627","#FFEA31","#4CAF50","#3155DC","#7B238A"},
+                new[]{"#5BCFFA","#F5ABB9","#FFFFFF","#F5ABB9","#5BCFFA"},
+                new[]{"#D93A96","#F9D733","#4A92ED"},
+                new[]{"#D52D1E","#EF7627","#FFEA31","#4CAF50","#3155DC","#7B238A"},
+                new[]{"#D72F70","#D72F70","#9637BD","#3423BD","#3423BD"},
+                new[]{"#FFF430","#FFFFFF","#9C59D1","#2D2D2D"},
+                new[]{"#111111","#AAAAAA","#FFFFFF","#7A2582"},
+                new[]{"#C54B19","#E47B2F","#F0A15D","#FFFFFF","#D86E9C","#A84272"},
+                new[]{"#FFDA32"}
+            };
+            double h=52.0/stripes[index].Length;for(int i=0;i<stripes[index].Length;i++)Box(f,0,i*h,82,h+.5,stripes[index][i]);
+            if(index==3)
+            {
+                Shape(f,"M0,0 L34,26 0,52 Z","#111111",null);Shape(f,"M0,4 L28,26 0,48 Z","#784F17",null);Shape(f,"M0,9 L22,26 0,43 Z","#5BCFFA",null);Shape(f,"M0,14 L16,26 0,38 Z","#F5ABB9",null);Shape(f,"M0,19 L10,26 0,33 Z","#FFFFFF",null);
+            }
+            if(index==8)Place(f,new Ellipse{Width=25,Height=25,Stroke=Ink("#7A2582"),StrokeThickness=6},28.5,13.5);
+            var framed=new Canvas{Name="PrideFlag"+index,Width=90,Height=60};Place(framed,f,4,4);Place(framed,new Rectangle{Name="PrideFlagNeonBorder",Width=84,Height=54,Stroke=Ink("#5BDEFF"),StrokeThickness=2,RadiusX=1,RadiusY=1,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#5BDEFF"),BlurRadius=7,ShadowDepth=0,Opacity=.88,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance}},3,3);return framed;
+        }
+        internal static Grid PrideBanner(bool light=false)
+        {
+            var banner=new Grid{Name="PrideHeaderBannerArt",Height=90,ClipToBounds=true,Background=Ink(light?"#EDE4F5":"#111127")};for(int i=0;i<9;i++)banner.ColumnDefinitions.Add(new ColumnDefinition());for(int i=0;i<9;i++){var flag=new Viewbox{Height=76,Margin=new Thickness(7,7,7,7),Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Stretch,VerticalAlignment=VerticalAlignment.Center,Child=PrideFlag(i)};Grid.SetColumn(flag,i);banner.Children.Add(flag);}var veil=new Border{Background=Ink(light?"#FFFFFF":"#111127"),Opacity=light?.26:.38,IsHitTestVisible=false};Grid.SetColumnSpan(veil,9);Panel.SetZIndex(veil,1);banner.Children.Add(veil);return banner;
+        }
         internal static Canvas Build(string theme,double height,Animate animate=null,bool light=false,bool includePlant=false,bool neon=false)
         {
             var c=new Canvas { Width=1000,Height=height,ClipToBounds=true };
-            if(theme=="Sanctuary")
+            if(theme=="Pride")
+            {
+                Box(c,0,0,1000,height,light?"#F5ECFF":"#111127");
+                var haze=new Canvas{Name="PrideHaze",Opacity=light?.28:.2};c.Children.Add(haze);Place(haze,new Ellipse{Width=430,Height=280,Fill=new RadialGradientBrush((Color)ColorConverter.ConvertFromString("#E23A84"),Colors.Transparent)},610,-45);Place(haze,new Ellipse{Width=390,Height=300,Fill=new RadialGradientBrush((Color)ColorConverter.ConvertFromString("#5BCFFA"),Colors.Transparent)},-90,height*.45);Drift(haze,animate,18,12,18);
+                string[] rainbow={"#E23A32","#F3982D","#FFDF3B","#55BD59","#4A92ED","#9B4DCA"};
+                var lines=new Canvas{Name="PrideNeonLines",Opacity=light?.55:.78,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#D93A96"),BlurRadius=neon?20:8,ShadowDepth=0,Opacity=neon?.92:.48,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance}};c.Children.Add(lines);
+                for(int i=0;i<6;i++)
+                {
+                    double y=height*(.28+i*.055);var line=Shape(lines,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M-100,{0} C130,{1} 320,{2} 520,{0} S820,{3} 1100,{0}",y,y-78-i*3,y+55+i*4,y-48+i*2),null,rainbow[i],neon?4.2:2.4);line.StrokeDashArray=new DoubleCollection{120,18};if(animate!=null)animate(line,System.Windows.Shapes.Shape.StrokeDashOffsetProperty,0,138,6.5+i*.55);
+                }
+                Drift(lines,animate,18,8,16);
+                Shape(c,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M0,{0} C180,{1} 370,{2} 540,{1} S820,{3} 1000,{0} L1000,{4} L0,{4} Z",height*.78,height*.68,height*.85,height*.7,height),light?"#E7D8F4":"#181735",null).Opacity=.58;
+                var spectrum=new Canvas{Name="PrideSpectrum",Opacity=light?.26:.42,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#5BCFFA"),BlurRadius=neon?18:6,ShadowDepth=0,Opacity=neon?.88:.4,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance}};c.Children.Add(spectrum);double baseY=height*.92;
+                for(int i=0;i<48;i++){double barHeight=22+(i*37%95),x=i*21;Place(spectrum,new Rectangle{Name="PrideSpectrumBar",Width=14,Height=barHeight,Fill=Ink(rainbow[i%6]),RadiusX=2,RadiusY=2},x,baseY-barHeight);}if(animate!=null)animate(spectrum,UIElement.OpacityProperty,light?.2:.34,light?.32:.5,2.8);
+            }
+            else if(theme=="Sanctuary")
             {
                 Box(c,0,0,1000,height,light?"#BFE5BA":"#102B29");
                 if(light)
@@ -73,6 +114,7 @@ namespace Digitone
                     var moon=Place(c,new Ellipse{Width=105,Height=105,Fill=Ink("#D7E7C0"),Opacity=.9},105,58);Place(c,new Ellipse{Width=92,Height=92,Fill=Ink("#102B29")},139,45);Drift(moon,animate,4,7,11);
                     var stars=new Canvas{Name="SanctuaryStars"};if(neon)stars.Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#B8F39A"),BlurRadius=13,ShadowDepth=0,Opacity=.9,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance};c.Children.Add(stars);for(int i=0;i<26;i++){double size=2+(i%4);Place(stars,new Ellipse{Width=size,Height=size,Fill=Ink(i%5==0?"#C9B8FF":"#D6ECCB"),Opacity=.45+(i%3)*.18},25+(i*83)%950,24+(i*67)%Math.Max(180,height*.62));}Drift(stars,animate,6,-12,16);
                 }
+                var stringLights=new Canvas{Name="SanctuaryStringLights",Opacity=.92};c.Children.Add(stringLights);var lightWire=new Polyline{Stroke=Ink(light?"#42634A":"#183D32"),StrokeThickness=3};for(int x=-20;x<=1020;x+=20)lightWire.Points.Add(new Point(x,72+Math.Sin(x/80.0*.9)*18));stringLights.Children.Add(lightWire);for(int i=0;i<13;i++){double x=18+i*80,wireY=72+Math.Sin(x/80.0*.9)*18,bulbY=wireY+16;string color=i%3==0?"#FFD85D":i%3==1?"#FF9D72":"#B9EA91";Place(stringLights,new Rectangle{Width=2,Height=18,Fill=Ink(light?"#42634A":"#245847")},x+4,wireY);var bulb=Place(stringLights,new Ellipse{Name="SanctuaryStringBulb",Width=11,Height=15,Fill=Ink(color),Stroke=Ink(light?"#6D5A2A":"#FFF0A3"),StrokeThickness=1,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString(color),BlurRadius=neon?18:8,ShadowDepth=0,Opacity=neon?1:.68}},x,bulbY);if(animate!=null)animate(bulb,UIElement.OpacityProperty,.55,1,1.5+(i%4)*.45);}Drift(stringLights,animate,7,3,15);
                 Shape(c,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M0,{0} Q170,{1} 340,{0} T680,{2} T1000,{0} L1000,{3} L0,{3} Z",height*.68,height*.51,height*.58,height),light?"#598F54":"#214E3B",null);
                 var shrubs=new Canvas{Name="SanctuaryShrubs"};c.Children.Add(shrubs);for(int i=0;i<18;i++){double radius=90+(i%4)*24,x=-35+i*62,y=height-radius*.95-(i%3)*18;Place(shrubs,new Ellipse{Width=radius,Height=radius*.68,Fill=Ink(i%3==0?(light?"#4F8D4B":"#1C5B3D"):i%3==1?(light?"#6AA75C":"#28704A"):(light?"#3F7747":"#174A38")),Stroke=Ink(light?"#356D3A":"#2B7D55"),StrokeThickness=1.2},x,y);}
                 var vines=new Canvas{Opacity=.76};c.Children.Add(vines);for(int i=0;i<5;i++){double x=18+i*220;var vine=Shape(vines,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M{0},0 C{1},{2} {3},{4} {5},{6}",x,x+65,height*.18,x-45,height*.42,x+32,height*.72),null,light?"#397840":"#3B8D5A",3);for(int j=0;j<4;j++){var leaf=Place(vines,new Ellipse{Width=20,Height=10,Fill=Ink(j%2==0?(light?"#69A954":"#4D9B61"):(light?"#4B8D49":"#337C52"))},x+((j%2==0)?18:-7),70+j*height*.13);leaf.RenderTransform=new RotateTransform(j%2==0?28:-28,10,5);}}Drift(vines,animate,8,12,13);

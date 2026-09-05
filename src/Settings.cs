@@ -31,11 +31,18 @@ namespace Digitone
         }
         private void UpdateRecordSpin()
         {
-            var rotation = (RotateTransform)Find<Grid>("RecordDisc").RenderTransform;
+            var disc = Find<Grid>("RecordDisc");
+            var rotation = (RotateTransform)disc.RenderTransform;
             double angle = rotation.Angle;
-            rotation.BeginAnimation(RotateTransform.AngleProperty, null);
-            rotation.Angle = angle;
-            if (playing && Find<Grid>("ExpandedView").Visibility != Visibility.Visible) rotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(angle, angle + 360, TimeSpan.FromSeconds(12)) { RepeatBehavior = RepeatBehavior.Forever });
+            if (!playing || Find<Grid>("ExpandedView").Visibility == Visibility.Visible)
+            {
+                disc.RenderTransform = new RotateTransform(angle);
+                return;
+            }
+            rotation.ApplyAnimationClock(RotateTransform.AngleProperty, null);
+            rotation.SetValue(RotateTransform.AngleProperty, angle);
+            if (playing)
+                rotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(angle, angle + 360, TimeSpan.FromSeconds(12)) { RepeatBehavior = RepeatBehavior.Forever });
         }
     }
 }

@@ -103,6 +103,7 @@ namespace Digitone
                 var previewFrame = new Border { Child = preview, BorderBrush = Brushes.Black, BorderThickness = new Thickness(2), Margin = new Thickness(7,0,3,12), RenderTransform = new SkewTransform(-5,0),RenderTransformOrigin=new Point(.5,.5) };
                 preview.Children.Clear();
                 preview.Children.Add(new Viewbox { Stretch=Stretch.UniformToFill,ClipToBounds=true,Child=ThemeScenes.Build(theme,600) });
+                if(theme=="Pride")preview.Children.Add(new Viewbox{Height=24,Stretch=Stretch.Fill,VerticalAlignment=VerticalAlignment.Top,Child=ThemeScenes.PrideBanner()});
                 stack.Children.Add(previewFrame); var themeLabel=SettingsText(Themes.Label(theme),11);themeLabel.TextWrapping=TextWrapping.Wrap;themeLabel.Height=34;themeLabel.TextTrimming=TextTrimming.None;stack.Children.Add(themeLabel);
                 var button = new Button { Content = stack, Tag = theme, Template = cardTemplate, Width=118,Height = 158, BorderBrush = Brushes.Transparent, Margin = new Thickness(6,0,6,0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
                 button.MouseEnter += delegate { button.SetResourceReference(Control.BorderBrushProperty,"BC1D3A8"); };
