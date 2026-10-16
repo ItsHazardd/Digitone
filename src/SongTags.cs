@@ -96,7 +96,19 @@ namespace Digitone
             }
             finally{if(File.Exists(temp))File.Delete(temp);if(File.Exists(picture))File.Delete(picture);}
         }
-        internal static string Save(Track edited, byte[] cover, bool changeCover)
+        // MusicBrainz / AcoustID IDs in the names Picard and most players read. M4A keeps them in the library only.
+        internal static Dictionary<string, string> IdentityTags(Track track)
+        {
+            var tags = new Dictionary<string, string>();
+            string extension = Path.GetExtension(track.Path ?? "").ToLowerInvariant();
+            string[] names = extension == ".mp3" ? new[] { "MusicBrainz Recording Id", "MusicBrainz Album Id", "MusicBrainz Release Group Id", "MusicBrainz Artist Id", "Acoustid Id" }
+                : extension == ".flac" ? new[] { "MUSICBRAINZ_TRACKID", "MUSICBRAINZ_ALBUMID", "MUSICBRAINZ_RELEASEGROUPID", "MUSICBRAINZ_ARTISTID", "ACOUSTID_ID" } : null;
+            if (names == null) return tags;
+            string[] values = { track.MusicBrainzRecordingId, track.MusicBrainzReleaseId, track.MusicBrainzReleaseGroupId, track.MusicBrainzArtistId, track.AcoustId };
+            for (int i = 0; i < names.Length; i++) if (!String.IsNullOrWhiteSpace(values[i]) && System.Text.RegularExpressions.Regex.IsMatch(values[i], @"^[0-9a-fA-F-]{36}$")) tags[names[i]] = values[i];
+            return tags;
+        }
+        internal static string Save(Track edited, byte[] cover, bool changeCover, IDictionary<string, string> extraTags = null)
         {
             string path = edited.Path;
             if (!CanEdit(path) || !File.Exists(path)) throw new IOException("File editing supports available MP3, FLAC, and M4A files.");
@@ -113,6 +125,7 @@ namespace Digitone
                 args.AddRange(new[] { "-map", changeCover ? "0:a" : "0", "-map_metadata", "0", "-c", "copy" });
                 if (changeCover && cover != null) args.AddRange(new[] { "-map", "1:v:0", "-disposition:v:0", "attached_pic", "-metadata:s:v:0", "title=Album cover", "-metadata:s:v:0", "comment=Cover (front)" });
                 for (int i = 0; i < Fields.Length; i++) args.AddRange(new[] { "-metadata", Keys[i] + "=" + (string)typeof(Track).GetProperty(Fields[i]).GetValue(edited, null) });
+                if (extraTags != null) foreach (var tag in extraTags) args.AddRange(new[] { "-metadata", tag.Key + "=" + tag.Value });
                 if (extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)) args.AddRange(new[] { "-id3v2_version", "3" });
                 args.Add(temp); Run("ffmpeg.exe", args);
                 string originalHash = AudioHash(path), editedHash = AudioHash(temp);
@@ -122,6 +135,12 @@ namespace Digitone
                 {
                     string expected = (string)typeof(Track).GetProperty(Fields[i]).GetValue(edited, null) ?? "", actual = (string)typeof(Track).GetProperty(Fields[i]).GetValue(verified, null) ?? "";
                     if (expected != actual) throw new IOException("This file format did not preserve " + Fields[i] + ". Your original file was not replaced.");
+                }
+                if (extraTags != null && extraTags.Count > 0)
+                {
+                    var written = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); object format, tagsObject;
+                    var probe = Probe(temp); if (probe.TryGetValue("format", out format) && ((Dictionary<string, object>)format).TryGetValue("tags", out tagsObject)) foreach (var tag in (Dictionary<string, object>)tagsObject) written[tag.Key] = Convert.ToString(tag.Value);
+                    foreach (var tag in extraTags) { string value; if (!written.TryGetValue(tag.Key, out value) || value != tag.Value) throw new IOException("This file format did not keep the " + tag.Key + " tag. Your original file was not replaced."); }
                 }
                 if (changeCover && ((cover != null) != !String.IsNullOrEmpty(verified.CoverData))) throw new IOException("Artwork verification failed. Your original file was not replaced.");
                 if(changeCover&&cover!=null&&ArtworkDistance(cover,Convert.FromBase64String(verified.CoverData))>18)throw new IOException("The embedded artwork did not match the selected cover. Your original file was not replaced.");
@@ -205,7 +224,8 @@ namespace Digitone
                 edited.Year = ReleaseDate.Storage(fields["Year"].Text);
                 busy = true; save.IsEnabled = false; foreach (var input in fields.Values) input.IsEnabled = false; status.Text = "Saving and verifying the audio…";
                 releasePlayback(); ReleasedPlayback = true;
-                try { await Task.Run(delegate { SongTags.Save(edited, cover, changeCover); SongTags.ReadInto(edited); }); foreach (string field in SongTags.Fields) typeof(Track).GetProperty(field).SetValue(track, typeof(Track).GetProperty(field).GetValue(edited, null), null); track.CoverData = edited.CoverData; busy = false; DialogResult = true; }
+                string titleBefore = track.SongTitle ?? "", artistBefore = track.Artist ?? "", albumBefore = track.Album ?? "";
+                try { await Task.Run(delegate { SongTags.Save(edited, cover, changeCover); SongTags.ReadInto(edited); }); if ((edited.SongTitle ?? "") != titleBefore || (edited.Artist ?? "") != artistBefore || (edited.Album ?? "") != albumBefore) { if (track.RecognitionStatus != "Confirmed") track.RecognitionStatus = "Kept"; track.RecognitionSummary = "You edited these details, so automatic identification leaves them alone."; } foreach (string field in SongTags.Fields) typeof(Track).GetProperty(field).SetValue(track, typeof(Track).GetProperty(field).GetValue(edited, null), null); track.CoverData = edited.CoverData; if (changeCover) track.ArtworkSource = String.IsNullOrEmpty(edited.CoverData) ? "UserRemoved" : "User"; busy = false; DialogResult = true; }
                 catch (Exception e) { status.Text = "Save failed: " + e.Message; }
                 finally { busy = false; save.IsEnabled = true; foreach (var input in fields.Values) input.IsEnabled = true; }
             };

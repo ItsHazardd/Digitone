@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -30,6 +32,22 @@ namespace Digitone
             {
                 if(stream==null)return null;var image=new BitmapImage();image.BeginInit();image.CacheOption=BitmapCacheOption.OnLoad;image.StreamSource=stream;image.EndInit();image.Freeze();sanctuaryPlant=image;return image;
             }
+        }
+        // A real textured block drawn the way Minecraft shows blocks in the inventory: lit top, darker left and right faces.
+        private static Canvas IsoBlock(string top,string side)
+        {
+            var c=new Canvas { Width=160,Height=170 };
+            Face(c,side,new Point(0,40),new Vector(80,40),new Vector(0,85),.22);
+            Face(c,side,new Point(80,80),new Vector(80,-40),new Vector(0,85),.42);
+            Face(c,top,new Point(0,40),new Vector(80,-40),new Vector(80,40),0);
+            Shape(c,"M0,40 L80,0 160,40 160,125 80,165 0,125 Z M0,40 L80,80 160,40 M80,80 L80,165",null,"#1E1A16",2);
+            return c;
+        }
+        private static void Face(Canvas c,string texture,Point origin,Vector across,Vector down,double shade)
+        {
+            var face=new Rectangle { Width=64,Height=64,Fill=MinecraftTextures.Brush(texture),RenderTransform=new MatrixTransform(across.X/64,across.Y/64,down.X/64,down.Y/64,origin.X,origin.Y) };
+            RenderOptions.SetBitmapScalingMode(face,BitmapScalingMode.NearestNeighbor); c.Children.Add(face);
+            if(shade>0) c.Children.Add(new Rectangle { Width=64,Height=64,Fill=Brushes.Black,Opacity=shade,RenderTransform=face.RenderTransform });
         }
         private static Canvas Block()
         {
@@ -81,9 +99,33 @@ namespace Digitone
         }
         internal static Grid PrideBanner(bool light=false)
         {
-            var banner=new Grid{Name="PrideHeaderBannerArt",Height=90,ClipToBounds=true,Background=Ink(light?"#EDE4F5":"#111127")};for(int i=0;i<9;i++)banner.ColumnDefinitions.Add(new ColumnDefinition());for(int i=0;i<9;i++){var flag=new Viewbox{Height=76,Margin=new Thickness(7,7,7,7),Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Stretch,VerticalAlignment=VerticalAlignment.Center,Child=PrideFlag(i)};Grid.SetColumn(flag,i);banner.Children.Add(flag);}var veil=new Border{Background=Ink(light?"#FFFFFF":"#111127"),Opacity=light?.26:.38,IsHitTestVisible=false};Grid.SetColumnSpan(veil,9);Panel.SetZIndex(veil,1);banner.Children.Add(veil);return banner;
+            var banner=new Grid{Name="PrideHeaderBannerArt",Height=90,ClipToBounds=true,Background=Ink(light?"#EDE4F5":"#111127")};for(int i=0;i<9;i++)banner.ColumnDefinitions.Add(new ColumnDefinition());for(int i=0;i<9;i++){var flag=new Viewbox{Height=76,Margin=new Thickness(7,7,7,7),Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Stretch,VerticalAlignment=VerticalAlignment.Center,Child=PrideFlag(i)};Grid.SetColumn(flag,i);banner.Children.Add(flag);}var veil=new Border{Background=Ink(light?"#FFFFFF":"#111127"),Opacity=light?.26:.38,IsHitTestVisible=false};Grid.SetColumnSpan(veil,9);Panel.SetZIndex(veil,1);banner.Children.Add(veil);
+            banner.CacheMode=new BitmapCache(); // the flags never change, so they are drawn once and reused (they were redrawn every frame)
+            return banner;
         }
-        internal static Canvas Build(string theme,double height,Animate animate=null,bool light=false,bool includePlant=false,bool neon=false)
+        // cacheScale > 0: the scene is shown stretched by this much, so layers that only drift or fade as a whole are drawn once
+        // at that size and reused (the animated background otherwise made Windows redraw every shape of the scenery every frame).
+        internal static Canvas Build(string theme,double height,Animate animate=null,bool light=false,bool includePlant=false,bool neon=false,double cacheScale=0)
+        {
+            var animated=new HashSet<object>(); Animate track=null; if(animate!=null)track=delegate(IAnimatable target,DependencyProperty property,double from,double to,double seconds){animated.Add(target);animate(target,property,from,to,seconds);};
+            var scene=BuildScene(theme,height,track,light,includePlant,neon,cacheScale);
+            if(cacheScale>0)foreach(var layer in scene.Children.OfType<UIElement>())if(!(layer is Rectangle)&&layer.CacheMode==null&&StillInside(layer,layer,animated))layer.CacheMode=Cache(cacheScale);
+            return scene;
+        }
+        internal static BitmapCache Cache(double scale) { return new BitmapCache { RenderAtScale=Math.Max(1,Math.Min(4,scale)) }; }
+        // True when nothing inside the layer animates (the layer itself may drift or fade).
+        private static bool StillInside(UIElement root,DependencyObject node,HashSet<object> animated)
+        {
+            for(int i=0;i<VisualTreeHelper.GetChildrenCount(node);i++)
+            {
+                var child=VisualTreeHelper.GetChild(node,i); var element=child as UIElement;
+                if(element!=null&&(animated.Contains(element)||element.RenderTransform!=null&&animated.Contains(element.RenderTransform)))return false;
+                if(!StillInside(root,child,animated))return false;
+            }
+            var panel=node as Panel; if(panel!=null&&VisualTreeHelper.GetChildrenCount(node)==0)foreach(UIElement child in panel.Children){if(animated.Contains(child)||child.RenderTransform!=null&&animated.Contains(child.RenderTransform))return false;if(!StillInside(root,child,animated))return false;}
+            return true;
+        }
+        private static Canvas BuildScene(string theme,double height,Animate animate,bool light,bool includePlant,bool neon,double cacheScale)
         {
             var c=new Canvas { Width=1000,Height=height,ClipToBounds=true };
             if(theme=="Pride")
@@ -98,8 +140,8 @@ namespace Digitone
                 }
                 Drift(lines,animate,18,8,16);
                 Shape(c,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M0,{0} C180,{1} 370,{2} 540,{1} S820,{3} 1000,{0} L1000,{4} L0,{4} Z",height*.78,height*.68,height*.85,height*.7,height),light?"#E7D8F4":"#181735",null).Opacity=.58;
-                var spectrum=new Canvas{Name="PrideSpectrum",Opacity=light?.26:.42,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#5BCFFA"),BlurRadius=neon?18:6,ShadowDepth=0,Opacity=neon?.88:.4,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance}};c.Children.Add(spectrum);double baseY=height*.92;
-                for(int i=0;i<48;i++){double barHeight=22+(i*37%95),x=i*21;Place(spectrum,new Rectangle{Name="PrideSpectrumBar",Width=14,Height=barHeight,Fill=Ink(rainbow[i%6]),RadiusX=2,RadiusY=2},x,baseY-barHeight);}if(animate!=null)animate(spectrum,UIElement.OpacityProperty,light?.2:.34,light?.32:.5,2.8);
+                var spectrum=new Canvas{Name="PrideSpectrum",Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#5BCFFA"),BlurRadius=neon?18:6,ShadowDepth=0,Opacity=neon?.88:.4,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance}};var spectrumFade=new Canvas{Name="PrideSpectrumFade",Opacity=light?.26:.42};if(cacheScale>0)spectrumFade.CacheMode=Cache(cacheScale);spectrumFade.Children.Add(spectrum);c.Children.Add(spectrumFade);double baseY=height*.92;
+                for(int i=0;i<48;i++){double barHeight=22+(i*37%95),x=i*21;Place(spectrum,new Rectangle{Name="PrideSpectrumBar",Width=14,Height=barHeight,Fill=Ink(rainbow[i%6]),RadiusX=2,RadiusY=2},x,baseY-barHeight);}if(animate!=null)animate(spectrumFade,UIElement.OpacityProperty,light?.2:.34,light?.32:.5,2.8);
             }
             else if(theme=="Sanctuary")
             {
@@ -114,7 +156,7 @@ namespace Digitone
                     var moon=Place(c,new Ellipse{Width=105,Height=105,Fill=Ink("#D7E7C0"),Opacity=.9},105,58);Place(c,new Ellipse{Width=92,Height=92,Fill=Ink("#102B29")},139,45);Drift(moon,animate,4,7,11);
                     var stars=new Canvas{Name="SanctuaryStars"};if(neon)stars.Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString("#B8F39A"),BlurRadius=13,ShadowDepth=0,Opacity=.9,RenderingBias=System.Windows.Media.Effects.RenderingBias.Performance};c.Children.Add(stars);for(int i=0;i<26;i++){double size=2+(i%4);Place(stars,new Ellipse{Width=size,Height=size,Fill=Ink(i%5==0?"#C9B8FF":"#D6ECCB"),Opacity=.45+(i%3)*.18},25+(i*83)%950,24+(i*67)%Math.Max(180,height*.62));}Drift(stars,animate,6,-12,16);
                 }
-                var stringLights=new Canvas{Name="SanctuaryStringLights",Opacity=.92};c.Children.Add(stringLights);var lightWire=new Polyline{Stroke=Ink(light?"#42634A":"#183D32"),StrokeThickness=3};for(int x=-20;x<=1020;x+=20)lightWire.Points.Add(new Point(x,72+Math.Sin(x/80.0*.9)*18));stringLights.Children.Add(lightWire);for(int i=0;i<13;i++){double x=18+i*80,wireY=72+Math.Sin(x/80.0*.9)*18,bulbY=wireY+16;string color=i%3==0?"#FFD85D":i%3==1?"#FF9D72":"#B9EA91";Place(stringLights,new Rectangle{Width=2,Height=18,Fill=Ink(light?"#42634A":"#245847")},x+4,wireY);var bulb=Place(stringLights,new Ellipse{Name="SanctuaryStringBulb",Width=11,Height=15,Fill=Ink(color),Stroke=Ink(light?"#6D5A2A":"#FFF0A3"),StrokeThickness=1,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString(color),BlurRadius=neon?18:8,ShadowDepth=0,Opacity=neon?1:.68}},x,bulbY);if(animate!=null)animate(bulb,UIElement.OpacityProperty,.55,1,1.5+(i%4)*.45);}Drift(stringLights,animate,7,3,15);
+                var stringLights=new Canvas{Name="SanctuaryStringLights",Opacity=.92};c.Children.Add(stringLights);var lightWire=new Polyline{Stroke=Ink(light?"#42634A":"#183D32"),StrokeThickness=3};for(int x=-20;x<=1020;x+=20)lightWire.Points.Add(new Point(x,72+Math.Sin(x/80.0*.9)*18));stringLights.Children.Add(lightWire);for(int i=0;i<13;i++){double x=18+i*80,wireY=72+Math.Sin(x/80.0*.9)*18,bulbY=wireY+16;string color=i%3==0?"#FFD85D":i%3==1?"#FF9D72":"#B9EA91";Place(stringLights,new Rectangle{Width=2,Height=18,Fill=Ink(light?"#42634A":"#245847")},x+4,wireY);var bulbGlow=Place(stringLights,new Canvas{Name="SanctuaryBulbGlow"},x,bulbY);if(cacheScale>0)bulbGlow.CacheMode=Cache(cacheScale);var bulb=Place(bulbGlow,new Ellipse{Name="SanctuaryStringBulb",Width=11,Height=15,Fill=Ink(color),Stroke=Ink(light?"#6D5A2A":"#FFF0A3"),StrokeThickness=1,Effect=new System.Windows.Media.Effects.DropShadowEffect{Color=(Color)ColorConverter.ConvertFromString(color),BlurRadius=neon?18:8,ShadowDepth=0,Opacity=neon?1:.68}},0,0);if(animate!=null)animate(bulbGlow,UIElement.OpacityProperty,.55,1,1.5+(i%4)*.45);}Drift(stringLights,animate,7,3,15);
                 Shape(c,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M0,{0} Q170,{1} 340,{0} T680,{2} T1000,{0} L1000,{3} L0,{3} Z",height*.68,height*.51,height*.58,height),light?"#598F54":"#214E3B",null);
                 var shrubs=new Canvas{Name="SanctuaryShrubs"};c.Children.Add(shrubs);for(int i=0;i<18;i++){double radius=90+(i%4)*24,x=-35+i*62,y=height-radius*.95-(i%3)*18;Place(shrubs,new Ellipse{Width=radius,Height=radius*.68,Fill=Ink(i%3==0?(light?"#4F8D4B":"#1C5B3D"):i%3==1?(light?"#6AA75C":"#28704A"):(light?"#3F7747":"#174A38")),Stroke=Ink(light?"#356D3A":"#2B7D55"),StrokeThickness=1.2},x,y);}
                 var vines=new Canvas{Opacity=.76};c.Children.Add(vines);for(int i=0;i<5;i++){double x=18+i*220;var vine=Shape(vines,String.Format(System.Globalization.CultureInfo.InvariantCulture,"M{0},0 C{1},{2} {3},{4} {5},{6}",x,x+65,height*.18,x-45,height*.42,x+32,height*.72),null,light?"#397840":"#3B8D5A",3);for(int j=0;j<4;j++){var leaf=Place(vines,new Ellipse{Width=20,Height=10,Fill=Ink(j%2==0?(light?"#69A954":"#4D9B61"):(light?"#4B8D49":"#337C52"))},x+((j%2==0)?18:-7),70+j*height*.13);leaf.RenderTransform=new RotateTransform(j%2==0?28:-28,10,5);}}Drift(vines,animate,8,12,13);
@@ -153,11 +195,20 @@ namespace Digitone
             }
             else if(theme=="Overworld")
             {
-                for(int i=0;i<3;i++) { var block=Place(c,Block(),i==0?15:i==1?820:650,i==0?height*.42:i==1?height*.1:height*.8); block.Opacity=.9; Drift(block,animate,0,8+i*2,5+i); }
+                bool textured=MinecraftTextures.Available;
+                for(int i=0;i<3;i++) { var block=Place(c,!textured?Block():i==0?IsoBlock("grass_block_top","grass_block_side"):i==1?IsoBlock("diamond_ore","diamond_ore"):IsoBlock("jukebox_top","jukebox_side"),i==0?15:i==1?820:650,i==0?height*.42:i==1?height*.1:height*.8); block.Opacity=.9; Drift(block,animate,0,8+i*2,5+i); }
                 var clouds=new Canvas(); c.Children.Add(clouds);
                 for(int i=0;i<4;i++) { double x=80+i*245,y=30+(i%2)*55; Box(clouds,x,y,140,19,"#73908B"); Box(clouds,x+28,y-17,65,17,"#73908B"); }
                 clouds.Opacity=.35; Drift(clouds,animate,38,0,22);
-                for(int i=0;i<18;i++) { double x=i*60,y=height-35-(i%5)*10; Box(c,x,y,60,height-y,"#3E3327"); Box(c,x,y,60,9,"#578339"); }
+                var ground=new Canvas { Name="MinecraftGround" }; if(textured) c.Children.Add(ground); // one still layer, so it is drawn once and reused
+                for(int i=0;i<18;i++)
+                {
+                    double x=i*60,y=height-35-(i%5)*10;
+                    if(!textured) { Box(c,x,y,60,height-y,"#3E3327"); Box(c,x,y,60,9,"#578339"); continue; }
+                    // Real grass blocks along the ground (dirt below when the column is taller than one block).
+                    var grass=Place(ground,new Rectangle { Width=60,Height=60,Fill=MinecraftTextures.Brush("grass_block_side") },x,y); RenderOptions.SetBitmapScalingMode(grass,BitmapScalingMode.NearestNeighbor);
+                    if(height-y>60) { var dirt=Place(ground,new Rectangle { Width=60,Height=height-y-60,Fill=MinecraftTextures.Brush("dirt",60) },x,y+60); RenderOptions.SetBitmapScalingMode(dirt,BitmapScalingMode.NearestNeighbor); }
+                }
                 var sparks=new Canvas(); c.Children.Add(sparks); for(int i=0;i<9;i++) Box(sparks,60+i*111,140+(i*89)%350,4,4,"#B1C984"); Drift(sparks,animate,8,18,8);
             }
             else if(theme=="Spire")

@@ -58,6 +58,7 @@ namespace Digitone
         private TimeSpan lastWaveRender;
         private double waveRenderBudget;
         internal int WaveRenderCount { get; private set; }
+        private Action liveWaveHook = delegate { };
         private void SetupWaveRendering()
         {
             EventHandler render = delegate(object sender, EventArgs args)
@@ -66,7 +67,9 @@ namespace Digitone
                 if (frame == null || frame.RenderingTime == lastWaveRender) return;
                 double elapsed = Math.Max(0,(frame.RenderingTime-lastWaveRender).TotalSeconds);
                 lastWaveRender = frame.RenderingTime;
-                const double interval = 1.0/90;
+                // The seek bar glides every frame while playing (the 33 ms timer really ticked ~21 times a second).
+                if (ready && playing && !closed) { updatingSeek = true; Find<Slider>("Seek").Value = media.Position.TotalSeconds; updatingSeek = false; FeedRave(); }
+                const double interval = 1.0/240; // every frame, up to 240 Hz screens
                 waveRenderBudget = Math.Min(interval*2,waveRenderBudget+elapsed);
                 if(waveRenderBudget+0.000001 < interval) return;
                 waveRenderBudget %= interval;
@@ -74,8 +77,17 @@ namespace Digitone
                 if (!Find<Canvas>("Waveform").IsVisible && !Find<Canvas>("MainSpectrum").IsVisible && !Find<Grid>("ExpandedView").IsVisible) return;
                 UpdateLiveWave(); WaveRenderCount++;
             };
-            Window.Loaded += delegate { CompositionTarget.Rendering += render; };
-            Window.Closed += delegate { CompositionTarget.Rendering -= render; };
+            // The per-frame hook is only attached while a song plays; an attached hook makes Windows redraw at the screen's full refresh rate even when nothing moves.
+            bool attached = false; bool loaded = false;
+            liveWaveHook = delegate
+            {
+                bool need = loaded && !closed && playing && ready && Window.WindowState != WindowState.Minimized;
+                if (need == attached) return; attached = need;
+                if (need) { lastWaveRender = TimeSpan.Zero; CompositionTarget.Rendering += render; } else CompositionTarget.Rendering -= render;
+            };
+            Window.Loaded += delegate { loaded = true; liveWaveHook(); };
+            Window.StateChanged += delegate { liveWaveHook(); };
+            Window.Closed += delegate { loaded = false; if (attached) { attached = false; CompositionTarget.Rendering -= render; } };
         }
         private void SetupExpandedWaveform()
         {
@@ -87,23 +99,32 @@ namespace Digitone
             Find<Canvas>("ExpandedWaveform").SizeChanged += delegate { LayoutExpanded(); };
             Find<Canvas>("MainSpectrum").SizeChanged += delegate { var c=Find<Canvas>("MainSpectrum"); mainScene.Width=c.ActualWidth; mainScene.Height=c.ActualHeight; };
             Window.PreviewKeyDown += delegate(object sender, KeyEventArgs e) { if (e.Key == Key.F11) { ToggleFullscreen(); e.Handled = true; } else if (e.Key == Key.Escape && Find<Grid>("ExpandedView").Visibility == Visibility.Visible) { if (fullscreen) ToggleFullscreen(); else ShowExpanded(false); e.Handled = true; } };
-            ResetLiveWave();
+            ResetLiveWave(); audioScene.Rave = rave; mainScene.Rave = rave;
             var main=Find<Canvas>("MainSpectrum"); main.Children.Add(mainScene); SetMainVisualizer(Data.MainVisualizerMode);
         }
-        internal void ShowExpanded(bool show) { Find<Grid>("ExpandedView").Visibility = show ? Visibility.Visible : Visibility.Collapsed; SetAmbientVisibility(); UpdateRecordSpin(); if (show) { UpdateExpandedTitles(); LayoutExpanded(); Find<Grid>("ExpandedView").Focus(); } else DrawLiveWave(lastWave); }
+        internal void ShowExpanded(bool show) { Find<Grid>("ExpandedView").Visibility = show ? Visibility.Visible : Visibility.Collapsed; SetAmbientVisibility(); UpdateRecordSpin(); if (show) { UpdateExpandedTitles(); LayoutExpanded(); Find<Grid>("ExpandedView").Focus(); ShowExpandedHint("Space  play / pause   ·   F11  fullscreen   ·   Esc  back", true); } else DrawLiveWave(lastWave); }
+        // The keyboard hint appears for a few seconds when the visualizer opens, then fades out.
+        private readonly System.Windows.Threading.DispatcherTimer hintFade = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        private void ShowExpandedHint(string text, bool fade)
+        {
+            var hint = Find<TextBlock>("ExpandedHint"); hint.Text = text; hint.BeginAnimation(UIElement.OpacityProperty, null); hint.Opacity = 1; hintFade.Stop();
+            if (!fade) return;
+            if (hintFade.Tag == null) { hintFade.Tag = true; hintFade.Tick += delegate { hintFade.Stop(); var line = Find<TextBlock>("ExpandedHint"); if (SystemParameters.ClientAreaAnimation) line.BeginAnimation(UIElement.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(800))); else line.Text = ""; }; }
+            hintFade.Start();
+        }
         internal void ToggleFullscreen()
         {
             if (!fullscreen) { previousState = Window.WindowState; previousStyle = Window.WindowStyle; previousResize = Window.ResizeMode; fullscreen = true; ShowExpanded(true); Window.WindowState = WindowState.Normal; Window.WindowStyle = WindowStyle.None; Window.ResizeMode = ResizeMode.NoResize; Window.WindowState = WindowState.Maximized; }
             else { fullscreen = false; Window.WindowState = WindowState.Normal; Window.WindowStyle = previousStyle; Window.ResizeMode = previousResize; Window.WindowState = previousState; }
             Find<Button>("FullscreenButton").Content = fullscreen ? "Exit fullscreen" : "⛶ Fullscreen"; Find<Grid>("ExpandedView").Focus();
         }
-        private void UpdateExpandedTitles() { Text("ExpandedTitle", current == null ? "Something worth listening to." : current.Title); Text("ExpandedDetail", current == null ? "Choose a song, then settle in." : current.Detail); var cover=SongTags.ImageFromData(current==null?null:current.CoverData); Find<Image>("ExpandedArt").Source=cover; Find<TextBlock>("ExpandedArtFallback").Visibility=cover==null?Visibility.Visible:Visibility.Collapsed; }
+        private void UpdateExpandedTitles() { Text("ExpandedTitle", current == null ? "Nothing playing" : current.Title); Text("ExpandedDetail", current == null ? "" : current.Detail); var cover=SongTags.ImageFromData(current==null?null:current.CoverData); Find<Image>("ExpandedArt").Source=cover; Find<TextBlock>("ExpandedArtFallback").Visibility=cover==null?Visibility.Visible:Visibility.Collapsed; }
         private void ResetLiveWave()
         {
             if (liveWave != null) liveWave.Dispose(); liveWave = null; lastWave = null;
             var small = Find<Canvas>("Waveform"); small.Children.Clear(); small.Children.Add(smallTrace);
             LayoutExpanded(); DrawLiveWave(null);
-            Text("ExpandedHint", current == null ? "Play a song to see its live waveform" : "Preparing live waveform…");
+            Text("ExpandedHint", "");
         }
         private void RefreshLiveTheme()
         {
@@ -125,13 +146,12 @@ namespace Digitone
         }
         private void UpdateLiveWave()
         {
-            if (!playing || !ready) { lastWave = null; DrawLiveWave(null); Text("WaveLabel", "LIVE WAVE"); Text("ExpandedHint", "Play a song to see its live waveform"); return; }
+            if (!playing || !ready) { lastWave = null; DrawLiveWave(null); Text("WaveLabel", ""); return; }
             if (liveWave == null) return;
             double[] frame = liveWave.Sample(media.Position.TotalSeconds);
-            if (frame == null) { DrawLiveWave(null); string message = liveWave.Failed ? "Live waveform unavailable for this file" : "Preparing live waveform…"; Text("WaveLabel", message); Text("ExpandedHint", message); return; }
+            if (frame == null) { DrawLiveWave(null); string message = liveWave.Failed ? "Waveform unavailable for this file" : ""; Text("WaveLabel", message); if (liveWave.Failed) ShowExpandedHint(message, false); return; }
             lastWave = frame; DrawLiveWave(frame);
-            Text("WaveLabel", "LIVE WAVE · follows the current audio");
-            Text("ExpandedHint", "LIVE AUDIO  ·  Space to play / pause  ·  F11 fullscreen  ·  Esc to return");
+            Text("WaveLabel", "");
         }
         private static PointCollection TracePoints(double[] wave, double width, double height)
         {
@@ -146,9 +166,9 @@ namespace Digitone
             var small = Find<Canvas>("Waveform");
             if (Find<Grid>("ExpandedView").Visibility != Visibility.Visible && (small.IsVisible || wave == null)) smallTrace.Points = TracePoints(wave, small.ActualWidth, small.ActualHeight);
             if(Find<Canvas>("MainSpectrum").IsVisible){ var c=Find<Canvas>("MainSpectrum"); mainScene.Width=c.ActualWidth; mainScene.Height=c.ActualHeight; mainScene.SetFrame(wave); }
-            var large = Find<Canvas>("ExpandedWaveform");
-            if(ActiveVisualizer!="Waveform") { if(large.IsVisible || wave==null) audioScene.SetFrame(wave, wave != null && liveWave != null && (ActiveVisualizer=="Pulse" || ActiveVisualizer=="Prism") ? liveWave.SampleBands(media.Position.TotalSeconds) : null); return; }
-            if (large.IsVisible || wave == null) { var points = TracePoints(wave, large.ActualWidth, large.ActualHeight); expandedTrace.Points = points; expandedGlow.Points = points; }
+            var large = Find<Canvas>("ExpandedWaveform"); bool largeShown = large.IsVisible && large.Opacity > 0; // Beta 3D covers it with Opacity 0
+            if(ActiveVisualizer!="Waveform") { if(largeShown || wave==null) audioScene.SetFrame(wave, wave != null && liveWave != null && (ActiveVisualizer=="Pulse" || ActiveVisualizer=="Prism") ? liveWave.SampleBands(media.Position.TotalSeconds) : null); return; }
+            if (largeShown || wave == null) { var points = TracePoints(wave, large.ActualWidth, large.ActualHeight); expandedTrace.Points = points; expandedGlow.Points = points; expandedGlow.Opacity = .35 + .45 * rave.Kick; } // the glow punches on kicks
         }
     }
 }

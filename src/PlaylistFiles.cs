@@ -71,7 +71,7 @@ namespace Digitone
         internal DeletePlaylistDialog(Window owner, string name, int count, int shared)
         {
             Owner = owner; Title = "Delete playlist"; Width = 540; Height = 580; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner; Resources = owner.Resources; Background = owner.Background; Foreground = owner.Foreground; FontFamily = owner.FontFamily;
-            DeletedRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Deleted");
+            DeletedRoot = PortableFolders.Current.Deleted;
             var panel = new StackPanel { Margin = new Thickness(26) }; Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = owner.Background };
             panel.Children.Add(new TextBlock { Text = "Delete “" + name + "”?", FontSize = 24, TextWrapping = TextWrapping.Wrap });
             panel.Children.Add(new TextBlock { Text = count + " songs · " + shared + " also used in other playlists", Foreground = Brushes.Gray, Margin = new Thickness(0, 10, 0, 18) });

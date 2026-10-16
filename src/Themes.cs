@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -89,7 +90,12 @@ namespace Digitone
                 if(light){ double original=.2126*Convert.ToInt32(key.Substring(1,2),16)+.7152*Convert.ToInt32(key.Substring(3,2),16)+.0722*Convert.ToInt32(key.Substring(5,2),16);bool keepAccent=key=="CC1D3A8"||key=="CC3D4AA"||key=="CBACBA5";if(theme=="Sanctuary"&&keepAccent)color=Color.FromRgb(35,94,58);else if(theme=="Sanctuary"&&original>=140)color=original>210?Color.FromRgb(20,39,28):Color.FromRgb(52,76,59);else if(theme=="Pride"&&keepAccent)color=Color.FromRgb(132,39,113);else if(theme=="Pride"&&original>=140)color=original>210?Color.FromRgb(40,24,54):Color.FromRgb(80,47,91);else if(original>=140&&!keepAccent)color=original>210?Color.FromRgb(31,27,23):Blend(Color.FromRgb(80,69,59),lightSeed,.08);else if(original<30)color=Blend(Color.FromRgb(250,242,220),lightSeed,.14);else if(original<55)color=Blend(Color.FromRgb(232,220,193),lightSeed,.42);else if(original<90)color=Blend(Color.FromRgb(211,194,158),lightSeed,.52);else if(original<140)color=Blend(Color.FromRgb(119,105,80),lightSeed,.55);else color=Blend(lightSeed,Color.FromRgb(42,35,28),.18); }
                 resources[key] = color; resources["B" + key.Substring(1)] = new SolidColorBrush(color);
             }
-            resources["CaptionShadow"]=theme=="Sanctuary"&&!light?new DropShadowEffect{Color=Color.FromRgb(3,18,13),BlurRadius=4,ShadowDepth=1,Opacity=.95}:new DropShadowEffect{BlurRadius=0,ShadowDepth=0,Opacity=0};
+            // Only Sanctuary dark has a visible caption shadow. Elsewhere it was fully transparent but still cost a full effect pass per label per frame, so it is now simply absent.
+            // (Removed rather than set to null: WPF keeps showing the previous theme's shadow when a resource is merely set to null.)
+            var captionShadow=theme=="Sanctuary"&&!light?new DropShadowEffect{Color=Color.FromRgb(3,18,13),BlurRadius=4,ShadowDepth=1,Opacity=.95}:null;
+            if(captionShadow!=null)resources["CaptionShadow"]=captionShadow;else resources.Remove("CaptionShadow");
+            // The label style itself is swapped too: WPF re-applies a replaced style to every label, while a removed resource leaves the old shadow behind.
+            var labels=new Style(typeof(TextBlock));if(captionShadow!=null)labels.Setters.Add(new Setter(UIElement.EffectProperty,captionShadow));resources[typeof(TextBlock)]=labels;
             var headerFade=new LinearGradientBrush{StartPoint=new Point(0,.5),EndPoint=new Point(1,.5)};
             var helperFade=new LinearGradientBrush{StartPoint=new Point(0,.5),EndPoint=new Point(1,.5)};
             if(theme=="Sanctuary"&&light)
@@ -133,12 +139,65 @@ namespace Digitone
                 else if(!custom) Find<FrameworkElement>(name).Visibility=Visibility.Collapsed;
                 else if(name!="AmbientShard" && name!="AmbientSteps"){ Find<FrameworkElement>(name).Visibility=Visibility.Visible; Find<FrameworkElement>(name).Opacity=name=="AmbientOrbit"?.45:1; }
             if(custom || w<=0 || h<=0) return;
-            var scene=ThemeScenes.Build(Data.ThemeName,Math.Max(240,h/w*1000),AnimateTheme,Data.AppearanceMode=="Light",true,Data.NeonEnabled);
+            double sceneHeight=Math.Max(240,h/w*1000), stretch=Math.Max(w/1000,h/sceneHeight)*VisualTreeHelper.GetDpi(Window).DpiScaleX;
+            var scene=ThemeScenes.Build(Data.ThemeName,sceneHeight,AnimateTheme,Data.AppearanceMode=="Light",true,Data.NeonEnabled,stretch);
             themeGeometry.Children.Add(new Viewbox { Width=w,Height=h,Stretch=Stretch.UniformToFill,ClipToBounds=true,Child=scene });
             SetAmbientVisibility();
         }        private void SetupThemes()
         {
             ApplyTheme(Data.ThemeName);
+        }
+        // Sanctuary dark gives every caption a soft shadow for contrast. Animated backgrounds make Windows redraw the whole window every frame,
+        // which re-blurred all ~29 shadows every frame. Small groups of captions that hold nothing moving are cached instead, so their shadows
+        // are drawn once and reused until the text changes. Groups next to anything moving (seek bar, waveform, 3D tile, lists) stay live.
+        private readonly List<UIElement> captionCaches = new List<UIElement>();
+        internal int CachedCaptionGroups { get { return captionCaches.Count; } }
+        private void CacheShadowedCaptions()
+        {
+            foreach (var cached in captionCaches) cached.CacheMode = null; captionCaches.Clear();
+            if (Window.TryFindResource("CaptionShadow") == null) return;
+            foreach (var text in ShadowedCaptions(Window).ToList())
+            {
+                var group = VisualTreeHelper.GetParent(text) as Panel;
+                if (group != null && (group.CacheMode != null || (group.Tag as string) == CaptionHolder)) continue;
+                if (group != null && StaysStill(group)) { group.CacheMode = new BitmapCache { SnapsToDevicePixels = true }; captionCaches.Add(group); continue; }
+                // A caption next to something that moves (seek bar, waveform, 3D tile) gets its own small cached holder instead.
+                var holder = CaptionHolderFor(text); if (holder == null) continue;
+                holder.CacheMode = new BitmapCache { SnapsToDevicePixels = true }; captionCaches.Add(holder);
+            }
+        }
+        private const string CaptionHolder = "CaptionHolder";
+        private static Border CaptionHolderFor(TextBlock text)
+        {
+            var parent = VisualTreeHelper.GetParent(text); var existing = parent as Border;
+            if (existing != null && (existing.Tag as string) == CaptionHolder) return existing;
+            var holder = new Border { Tag = CaptionHolder, Margin = text.Margin, HorizontalAlignment = text.HorizontalAlignment, VerticalAlignment = text.VerticalAlignment, IsHitTestVisible = text.IsHitTestVisible };
+            Grid.SetRow(holder, Grid.GetRow(text)); Grid.SetColumn(holder, Grid.GetColumn(text)); Grid.SetRowSpan(holder, Grid.GetRowSpan(text)); Grid.SetColumnSpan(holder, Grid.GetColumnSpan(text));
+            DockPanel.SetDock(holder, DockPanel.GetDock(text)); Panel.SetZIndex(holder, Panel.GetZIndex(text)); Canvas.SetLeft(holder, Canvas.GetLeft(text)); Canvas.SetTop(holder, Canvas.GetTop(text));
+            var panel = parent as Panel; var decorator = parent as Decorator;
+            if (panel != null) { int at = panel.Children.IndexOf(text); if (at < 0) return null; panel.Children.RemoveAt(at); text.Margin = new Thickness(0); holder.Child = text; panel.Children.Insert(at, holder); }
+            else if (decorator != null && decorator.Child == text) { decorator.Child = null; text.Margin = new Thickness(0); holder.Child = text; decorator.Child = holder; }
+            else return null;
+            return holder;
+        }
+        private static IEnumerable<TextBlock> ShadowedCaptions(DependencyObject root)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i); var text = child as TextBlock;
+                if (text != null && text.Effect != null) yield return text;
+                foreach (var nested in ShadowedCaptions(child)) yield return nested;
+            }
+        }
+        private static bool StaysStill(DependencyObject root)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is System.Windows.Controls.Primitives.RangeBase || child is System.Windows.Controls.Viewport3D || child is Canvas || child is ItemsControl || child is ScrollViewer || child is MediaElement || child is System.Windows.Controls.Primitives.TextBoxBase) return false;
+                if (!StaysStill(child)) return false;
+            }
+            return true;
         }
         internal void ApplyTheme(string name)
         {
@@ -158,6 +217,7 @@ namespace Digitone
             Find<Button>("DownloadsButton").Background = downloads ? dim : Brushes.Transparent;
             Find<Button>("PlaylistsButton").Background = !downloads && playlistsView ? dim : Brushes.Transparent;
             UpdateNavigationOutline();
+            BetaThemeChanged();
             Find<Button>("ShuffleButton").Foreground = shuffle ? accent : Themes.Brush(Window, "919A92");
             Find<Button>("RepeatButton").Foreground = repeat != 0 ? accent : Themes.Brush(Window, "919A92");
             RefreshLiveTheme();
@@ -165,6 +225,7 @@ namespace Digitone
             ApplyNeon();
             NativeChrome.Apply(Window);
             foreach (Window child in Window.OwnedWindows) NativeChrome.Apply(child);
+            Window.Dispatcher.BeginInvoke(new Action(CacheShadowedCaptions), System.Windows.Threading.DispatcherPriority.Loaded);
         }
         private void UpdateNavigationOutline()
         {

@@ -15,6 +15,13 @@ namespace Digitone
         internal Brush Accent = Brushes.White;
         internal bool Rainbow;
         internal int RenderCount;
+        // Beat and bass from the shared RaveClock: kicks punch, the sub-bass glows, and colors step with the beat (calm, not jittery).
+        internal RaveClock Rave;
+        private double frameSeconds = .016;
+        private readonly double[] bars = new double[32], radii = new double[192];
+        private double Kick { get { return Rave == null ? 0 : Rave.Kick; } }
+        private double Sub { get { return Rave == null ? 0 : Rave.Sub; } }
+        private static double Follow(double seconds, double tau) { return 1 - Math.Exp(-seconds / tau); }
         private static readonly Color[] PrideColors={Color.FromRgb(226,58,50),Color.FromRgb(243,152,45),Color.FromRgb(255,223,59),Color.FromRgb(85,189,89),Color.FromRgb(74,146,237),Color.FromRgb(155,77,202)};
         private static readonly Brush[] PrideBrushes=CreatePrideBrushes();
         private readonly TranslateTransform rainbowShift=new TranslateTransform();
@@ -37,7 +44,7 @@ namespace Digitone
         internal void SetFrame(double[] frame, double[] bands = null)
         {
             samples = frame;
-            double now=clock.Elapsed.TotalSeconds,dt=Math.Min(.1,Math.Max(.001,now-lastFrameTime)); lastFrameTime=now;
+            double now=clock.Elapsed.TotalSeconds,dt=Math.Min(.1,Math.Max(.001,now-lastFrameTime)); lastFrameTime=now; frameSeconds=dt;
             for(int i=0;i<3;i++)
             {
                 double target=frame==null || bands==null?0:Math.Min(1,Math.Sqrt(Math.Max(0,bands[i]))*1.6);
@@ -53,7 +60,7 @@ namespace Digitone
             shape.Freeze(); return shape;
         }
         private Brush MovingRainbow(){rainbowShift.X=(clock.Elapsed.TotalSeconds*.22)%1;return rainbowBrush;}
-        private Brush PrideBand(int index){return PrideBrushes[(index+(int)(clock.Elapsed.TotalSeconds*7))%PrideBrushes.Length];}
+        private Brush PrideBand(int index){int step=Rave!=null&&Rave.Kicks>0?Rave.Beat:(int)(clock.Elapsed.TotalSeconds*1.5);return PrideBrushes[(index+step)%PrideBrushes.Length];} // steps with the beat
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc); RenderCount++;
@@ -69,23 +76,28 @@ namespace Digitone
                     double real=0,imag=0;
                     if(samples!=null) for(int i=0;i<Math.Min(384,samples.Length);i++) { real+=samples[i]*Cos[b,i]; imag+=samples[i]*Sin[b,i]; }
                     double level=Math.Min(1,Math.Sqrt(real*real+imag*imag)/384*12);
-                    double bar=Math.Max(2,level*baseline*.85),step=w/32;
+                    bars[b]+=(level-bars[b])*Follow(frameSeconds,level>bars[b]?.04:.18); // eased, so bars glide instead of jittering
+                    bool bass=b<7; double lift=bass?1+.18*Kick:1;
+                    double bar=Math.Max(2,Math.Min(1,bars[b]*lift)*baseline*.85),step=w/32;
+                    if(bass) dc.PushOpacity(Math.Min(1,.72+.28*Kick+.15*Sub));
                     dc.DrawRoundedRectangle(Rainbow?PrideBand(b/5):Accent,null,new Rect(b*step+step*.14,baseline-bar,step*.72,bar),2,2);
+                    if(bass) dc.Pop();
                 }
+                dc.PushOpacity(.25+.6*Sub); dc.DrawRectangle(Rainbow?PrideBand(0):Accent,null,new Rect(0,baseline-1-3*Sub,w*7/32,2+3*Sub)); dc.Pop(); // the bass line
                 SpectrumAxis(dc,w,h,baseline);
             }
             else if(Mode=="Radial")
             {
-                var points=new Point[192]; double radius=Math.Min(w,h)*.28;
-                for(int i=0;i<points.Length;i++) { double a=i*2*Math.PI/points.Length; double n=samples==null?0:samples[i*samples.Length/points.Length]; double r=radius+n*radius*.65; points[i]=new Point(w/2+Math.Cos(a)*r,h/2+Math.Sin(a)*r); }
+                var points=new Point[192]; double radius=Math.Min(w,h)*.28*(1+.12*Kick);
+                for(int i=0;i<points.Length;i++) { double a=i*2*Math.PI/points.Length; double n=samples==null?0:samples[i*samples.Length/points.Length]; radii[i]+=(n-radii[i])*Follow(frameSeconds,.035); double r=radius+radii[i]*radius*.65; points[i]=new Point(w/2+Math.Cos(a)*r,h/2+Math.Sin(a)*r); }
                 dc.DrawGeometry(null,pen,Line(points,true));
-                dc.PushOpacity(.2); dc.DrawEllipse(null,new Pen(liveAccent,1),new Point(w/2,h/2),radius*.78,radius*.78); dc.Pop();
+                dc.PushOpacity(.15+.5*Sub); dc.DrawEllipse(null,new Pen(liveAccent,1+3*Sub),new Point(w/2,h/2),radius*.78,radius*.78); dc.Pop(); // the sub-bass ring
             }
             else if(Mode=="Prism")
             {
                 double span=Math.Max(1,Math.Min(w,h-38));
                 for(int i=2;i>=0;i--) { double radius=span*(.12+i*.095+levels[i]*.07); dc.PushOpacity(.9-i*.18); dc.DrawGeometry(null,new Pen(Rainbow?PrideBand(i*2):Accent,2),Diamond(w/2,(h-30)/2,radius)); dc.Pop(); }
-                dc.PushOpacity(.12+energy*.16); dc.DrawGeometry(liveAccent,null,Diamond(w/2,(h-30)/2,span*.06)); dc.Pop();
+                dc.PushOpacity(Math.Min(1,.12+energy*.16+.5*Kick)); dc.DrawGeometry(liveAccent,null,Diamond(w/2,(h-30)/2,span*.06*(1+.7*Kick))); dc.Pop();
             }
             else
             {
@@ -98,12 +110,12 @@ namespace Digitone
                     double x=stacked?w/2:w*(i+.5)/3, top=stacked?cellHeight*i:0;
                     double y=top+(cellHeight-42)/2;
                     double room=Math.Max(1,Math.Min(cellWidth*.42,(cellHeight-52)*.45));
-                    double radius=room*(.55+levels[i]*.36);
+                    double radius=room*(.55+levels[i]*.36+(i==0?.22*Kick:0));
                     Brush bandAccent=Rainbow?PrideBand(i*2):Accent;
                     dc.PushOpacity(.18); dc.DrawEllipse(null,new Pen(bandAccent,1),new Point(x,y),room,room); dc.Pop();
                     dc.DrawEllipse(null,new Pen(bandAccent,2.5),new Point(x,y),radius,radius);
                     dc.PushOpacity(.24+levels[i]*.5); dc.DrawEllipse(null,new Pen(bandAccent,1),new Point(x,y),radius*.78,radius*.78); dc.Pop();
-                    dc.PushOpacity(.12+levels[i]*.3); dc.DrawGeometry(bandAccent,null,Diamond(x,y,room*.18)); dc.Pop();
+                    dc.PushOpacity(Math.Min(1,.12+levels[i]*.3+(i==0?.5*Kick:0))); dc.DrawGeometry(bandAccent,null,Diamond(x,y,room*.18*(i==0?1+.5*Kick:1))); dc.Pop();
                     var label=new FormattedText(names[i]+"\n"+ranges[i],System.Globalization.CultureInfo.InvariantCulture,FlowDirection.LeftToRight,new Typeface("Segoe UI"),12,bandAccent,VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment=TextAlignment.Center };
                     dc.DrawText(label,new Point(x,top+cellHeight-35));
                 }

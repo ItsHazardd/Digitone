@@ -36,7 +36,7 @@ namespace Digitone
         {
             try
             {
-                string data = browserData ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"Data","CoverBrowser");
+                string data = browserData ?? PortableFolders.Current.CoverBrowser;
                 string bundled=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"Tools","WebView2");
                 var environment = await CoreWebView2Environment.CreateAsync(Directory.Exists(bundled) ? bundled : null,data);
                 if (closed) return;

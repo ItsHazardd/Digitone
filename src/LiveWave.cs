@@ -53,6 +53,25 @@ namespace Digitone
             }
             lastBands=FrequencyBands.Analyze(samples); lastBandFrame=frame; return lastBands;
         }
+        // The low end only (a 120 Hz low-pass over the real 48 kHz audio): loudness over the last ~21 ms and ~85 ms. Drives kicks and sub-bass.
+        internal double[] SampleLow(double position)
+        {
+            if (Double.IsNaN(position) || Double.IsInfinity(position) || position < 0) return null;
+            int index = (int)(position / 4); short[] data; int end;
+            lock (gate) { if (disposed) return null; wanted = index; }
+            Ensure(index); if (position - index * 4 > 2.5) Ensure(index + 1); // decode the audio around here if it is not ready yet
+            lock (gate) { if (disposed) return null; Block block; if (!cache.TryGetValue(index, out block)) return null; data = block.Samples; end = (int)((position - block.Start) * FrequencyBands.SampleRate); }
+            const int window = 4096, recent = 1024, settle = 1024; int start = end - window - settle;
+            double w0 = 2 * Math.PI * 120 / FrequencyBands.SampleRate, cos = Math.Cos(w0), alpha = Math.Sin(w0) / (2 * .7071), a0 = 1 + alpha;
+            double b0 = (1 - cos) / 2 / a0, b1 = (1 - cos) / a0, b2 = b0, a1 = -2 * cos / a0, a2 = (1 - alpha) / a0;
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0, longSum = 0, shortSum = 0;
+            for (int i = start; i < end; i++)
+            {
+                double x = i >= 0 && i < data.Length ? data[i] / 32768.0 : 0, y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x; y2 = y1; y1 = y;
+                if (i >= end - window) { longSum += y * y; if (i >= end - recent) shortSum += y * y; }
+            }
+            return new[] { Math.Sqrt(shortSum / recent), Math.Sqrt(longSum / window) };
+        }
         private void Ensure(int index)
         {
             lock (gate) { if (disposed || cache.ContainsKey(index) || pending.Contains(index) || failed.Contains(index) || pending.Count >= 2) return; pending.Add(index); }

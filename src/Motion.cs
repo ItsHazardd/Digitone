@@ -11,8 +11,7 @@ namespace Digitone
         internal static void Enter(FrameworkElement element, double x, double y)
         {
             if (!SystemParameters.ClientAreaAnimation || !element.IsLoaded) return;
-            var move = element.RenderTransform as TranslateTransform;
-            if (move == null) { move = new TranslateTransform(); element.RenderTransform = move; }
+            var move = BetaMotion.Parts(element).Move;
             var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
             move.X=x; move.Y=y;
             move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, FillBehavior = FillBehavior.HoldEnd });
@@ -50,6 +49,46 @@ namespace Digitone
         {
             var clock = (AnimationClock)animation.CreateClock(true); target.ApplyAnimationClock(property,clock); ambientClocks.Add(clock);
         }
+        // Page change: the page that changed rises a little and fades in as one piece, with a soft landing (no bounce).
+        // During the glide the page is a ready-made picture the graphics card slides, so it stays locked to the screen's refresh rate;
+        // it starts only after the new page is laid out, so no frames are skipped. Panels that did not change stay still.
+        private readonly System.Collections.Generic.Dictionary<FrameworkElement, int> glides = new System.Collections.Generic.Dictionary<FrameworkElement, int>();
+        internal int PageGlideCount { get; private set; }
+        internal const double GlideRise = 18; internal const int GlideMs = 420, GlideFadeMs = 260;
+        private void PageGlide(params FrameworkElement[] panes)
+        {
+            if (!SystemParameters.ClientAreaAnimation) return;
+            bool depth = BetaActive;
+            foreach (var pane in panes)
+            {
+                if (pane == null || pane.Visibility != Visibility.Visible) continue;
+                int version; glides.TryGetValue(pane, out version); glides[pane] = ++version; int mine = version; var target = pane;
+                var parts = BetaMotion.Parts(pane);
+                pane.BeginAnimation(UIElement.OpacityProperty, null); parts.Move.BeginAnimation(TranslateTransform.XProperty, null); parts.Move.BeginAnimation(TranslateTransform.YProperty, null);
+                parts.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null); parts.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                pane.Opacity = 0; parts.Move.X = 0; parts.Move.Y = GlideRise; // set before the next frame is drawn, so the new page never flashes in early
+                if (depth) { pane.RenderTransformOrigin = new Point(.5, .35); parts.Scale.ScaleX = parts.Scale.ScaleY = .985; }
+                pane.CacheMode = new BitmapCache();
+                Window.Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (glides[target] != mine) return;
+                    var land = new QuinticEase { EasingMode = EasingMode.EaseOut };
+                    var move = new DoubleAnimation(GlideRise, 0, TimeSpan.FromMilliseconds(GlideMs)) { EasingFunction = land };
+                    move.Completed += delegate
+                    {
+                        if (glides[target] != mine) return;
+                        var settled = BetaMotion.Parts(target); target.CacheMode = null;
+                        target.BeginAnimation(UIElement.OpacityProperty, null); target.Opacity = 1;
+                        settled.Move.BeginAnimation(TranslateTransform.YProperty, null); settled.Move.Y = 0;
+                        settled.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null); settled.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null); settled.Scale.ScaleX = settled.Scale.ScaleY = 1;
+                    };
+                    target.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(GlideFadeMs)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+                    BetaMotion.Parts(target).Move.BeginAnimation(TranslateTransform.YProperty, move);
+                    if (depth) { var grow = new DoubleAnimation(.985, 1, TimeSpan.FromMilliseconds(GlideMs)) { EasingFunction = land }; BetaMotion.Parts(target).Scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow); BetaMotion.Parts(target).Scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow); }
+                    PageGlideCount++;
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
+        }
         private void SetAmbientVisibility()
         {
             bool hidden = Find<Grid>("ExpandedView").Visibility == Visibility.Visible;
@@ -58,6 +97,8 @@ namespace Digitone
         }
         private void SetupMotion()
         {
+            // The two background rings only rotate as a whole, so each is drawn once (at double resolution, to stay crisp while turning) and reused.
+            foreach (string ring in new[] { "AmbientRing", "AmbientOrbit" }) Find<System.Windows.Shapes.Ellipse>(ring).CacheMode = new BitmapCache { RenderAtScale = 2 };
             Window.Loaded += delegate { UpdateAmbientMotion(); Motion.WireButtons(Window); Motion.Enter(Find<Border>("NowPane"), -24, 0); Motion.Enter(Find<Grid>("LibraryPane"), 32, 0); };
             Find<Canvas>("AmbientCanvas").SizeChanged += delegate { LayoutAmbient(); };
             Window.Closed += delegate { foreach(var clock in ambientClocks) clock.Controller.Remove(); ambientClocks.Clear(); };
@@ -78,6 +119,8 @@ namespace Digitone
                     StartAmbientClock(rotation,RotateTransform.AngleProperty, new DoubleAnimation(0, name == "AmbientRing" ? 360 : -360, TimeSpan.FromSeconds(name == "AmbientRing" ? 70 : 42)) { RepeatBehavior = RepeatBehavior.Forever });
                 else if(name=="AmbientRing") rotation.BeginAnimation(RotateTransform.AngleProperty, null);
             }
+            var orbitTurn = (RotateTransform)Find<System.Windows.Shapes.Ellipse>("AmbientOrbit").RenderTransform;
+            if (SystemParameters.ClientAreaAnimation) StartAmbientClock(orbitTurn, RotateTransform.AngleProperty, new DoubleAnimation(0, -360, TimeSpan.FromSeconds(60.3)) { RepeatBehavior = RepeatBehavior.Forever });
             SetAmbientVisibility();
         }
         private void LayoutAmbient()

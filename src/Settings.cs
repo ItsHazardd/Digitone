@@ -42,7 +42,7 @@ namespace Digitone
             rotation.ApplyAnimationClock(RotateTransform.AngleProperty, null);
             rotation.SetValue(RotateTransform.AngleProperty, angle);
             if (playing)
-                rotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(angle, angle + 360, TimeSpan.FromSeconds(12)) { RepeatBehavior = RepeatBehavior.Forever });
+                { var spin = new DoubleAnimation(angle, angle + 360, TimeSpan.FromSeconds(12)) { RepeatBehavior = RepeatBehavior.Forever }; rotation.BeginAnimation(RotateTransform.AngleProperty, spin); }
         }
     }
 }
